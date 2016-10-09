@@ -1,0 +1,17 @@
+#!/usr/bin/env node
+require('source-map-support').install();
+var Controller = require('../').lib.Control;
+
+new Controller().start({ config: 'config.js', activity: false, decider: false },
+  function(err, controller) {
+
+    if (err) {
+      console.log(err);
+      process.exit(1);
+    }
+    controller.submitWorkflowExecution('createDeployment',
+      { deploymentId: 'test', name: 'Test Name...' },
+      (err, result) => {
+        console.log(err, result);
+      });
+  });
