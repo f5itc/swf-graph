@@ -25,6 +25,7 @@ export class Control {
   start(args: any, cb: {(Error?)}) {
     this.init(args.config, (err, entities) => {
       if (err) { return cb(err); }
+
       this.startWorkers(args, cb);
     });
   }
@@ -44,7 +45,7 @@ export class Control {
     });
   }
 
-  startWorkers(args: any, cb: {(err?: Error | null, controller?: Control)}) {
+  startWorkers(args: any, cb: {(Error?)}) {
     function toStop(worker: ActivityWorker | DeciderWorker, name: 'activity' | 'decider', cb: {(Error?)}) {
       worker.on('error', (err: Error, execution?: any) => {
         let withExecution = execution ? ` with execution ${execution.id}` : '';
@@ -69,41 +70,39 @@ export class Control {
       toStop.call(this, this.activityWorker, 'activity', cb);
       workers['activityWorker'] = this.activityWorker;
     }
-
     if (args.decider) {
       toStop.call(this, this.deciderWorker, 'decider', cb);
       workers['deciderWorker'] = this.deciderWorker;
     }
-
     this.startActivityWorker(args.activity, (err) => {
-      if (err) { return cb(err); }
+      if (err) {
+        return cb(err);
+      }
       this.startDeciderWorker(args.decider, (err) => {
-        if (err) { return cb(err); }
-        this.config.logger.info('Initialization complete.');
-
-        cb(null, this);
+        if (err) {
+          return cb(err);
+        }
+        this.config.logger.info('started workers');
       });
     });
-
     let gotSigint = false;
     process.on('SIGINT', () => {
       if (gotSigint) {
         this.config.logger.warn('forcefully exiting, some tasks may have left an invalid state');
         return process.exit(1);
       }
-
       this.config.logger.info('signalling workers to exit cleanly, ctrl+c again to immediately exit');
       gotSigint = true;
-
       async.each(Object.keys(workers), (name, cb) => {
         let worker = workers[name];
         worker.stop((err) => {
-          if (err) { return cb(err); }
-
+          if (err) {
+            return cb(err);
+          }
           this.config.logger.info(`stopped ${name} worker`);
           cb();
         });
-      }, () => (false));
+      }, cb);
     });
   }
 
@@ -150,37 +149,24 @@ export class Control {
       return cb(null, new Error('No workflow found in registry for:' + workflowName));
     }
 
-    let workflowDef = new TargetWorkflow(this.config, null);
-    let processor = new Processor(this.config, workflowDef, null, {});
+    // TODO: Implement validation of workflow entities
+    // const failureReason = validator.validate(config, result);
+    //
+    // if (failureReason) {
+    //   config.logger.error('invalid job');
+    //   config.logger.error(failureReason);
+    //   return cb(new Error('invalid job'));
+    // }
 
-    processor.process(_.clone(workflowArgs), (err, result) => {
-      if (err) { return cb(err); }
+    TargetWorkflow.submit(workflowArgs, {}, {}, this.workflow,
+      (err, info) => {
+        if (err) { return cb(err); }
 
+        config.logger.info(info);
+        cb(info);
 
-      // TODO: Implement validation of workflow entities
-      // const failureReason = validator.validate(config, result);
-      //
-      // if (failureReason) {
-      //   config.logger.error('invalid job');
-      //   config.logger.error(failureReason);
-      //   return cb(new Error('invalid job'));
-      // }
-
-      let initialEnv = {};
-      let options = {};
-
-      this.workflow.startWorkflow(workflowName + '_' + shortId.generate(),
-        result, initialEnv, options,
-        (err, info) => {
-          if (err) { return cb(err); }
-
-          config.logger.info(info);
-          cb(info);
-
-          console.log('New workflow execution submitted; exiting.');
-          process.exit(0);
-        });
-    });
-
+        console.log('New workflow execution submitted; exiting.');
+        process.exit(0);
+      });
   }
 }

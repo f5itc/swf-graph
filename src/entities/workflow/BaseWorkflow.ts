@@ -1,52 +1,52 @@
-import { DecisionTask } from 'simple-swf/build/src/tasks';
-
 import * as Joi from 'joi';
-
 import { Config } from '../../Config';
-import { ActivityRegistry } from '../activity';
-import { Logger } from '../../lib';
 
-export class BaseWorkflow {
-  FTLConfig: Config;
-  activities: ActivityRegistry;
-  logger: Logger;
-  graphKey?: string;
-
+// Format of object provided as workflow definitions from outside sources
+export interface FTLWorkflowDef {
+  name: string;
   version: string;
   schema: Joi.Schema;
-
+  decider(args: any): any;
+  output(results): any;
   maxRetry?: number;
+}
 
-  constructor(config: Config, options: any) {
-    this.FTLConfig = config;
-    this.activities = config.activities;
-    this.logger = config.logger;
+// FTL workflow wrapper object
+// 1. Uses provided props from provided FTLWorkflowDef object
+// 2. validateTask is generic joi check using provided schema
+export class BaseWorkflow {
+  version: string;
+  schema: Joi.Schema;
+  maxRetry?: number;
+  maxConcurrent?: number;
+  config: Config;
+  name: string;
+  graphKey?;
 
-    this.version = options.version;
-    this.schema = options.schema;
-    this.maxRetry = options.maxRetry;
+  decider(args: any) { };
+
+  output(results: any) { };
+
+  constructor(config: Config, workflowDef: FTLWorkflowDef) {
+    this.version = workflowDef.version;
+    this.schema = workflowDef.schema;
+    this.maxRetry = workflowDef.maxRetry;
+
+    this.decider = workflowDef.decider;
+    this.output = workflowDef.output;
+    this.name = workflowDef.name;
+
+    this.config = config;
   }
 
-  getTaskGraph(): any {
-    throw new Error('must implement getTaskGraph()');
+  validateTask(args: any): string | null {
+    const {error} = Joi.validate(args, this.schema);
+
+    return `Error validating workflow: ` + error;
   }
 
-  output(results: any): any {
-    throw new Error('must implement output()');
-  }
-
-  static validateTask(parameters: any): string | null {
-    throw new Error('validateTask must be overriden');
-  }
-
-  // we return an empty string here as we need the method, but we want to try our default implentation
-  getHandlerName(): string {
-    return '';
-  }
-
-  // we return an empty string here as we need the method, but we want to try our default implentation
-  static getHandlerName(): string {
-    return '';
+  getHandlerName() {
+    return this.name;
   }
 
 }

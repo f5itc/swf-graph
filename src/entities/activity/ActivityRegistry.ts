@@ -5,9 +5,8 @@ import { Registry } from '../Registry';
 
 export class ActivityRegistry extends Registry<ActivityType> {
   wrapModule(filename: string, handler: any): ActivityType {
-    if (handler.default) {
-      handler = handler.default;
-    }
+    if (handler.default) { handler = handler.default; }
+
     if (typeof handler !== 'function') {
       throw new Error(`activity module ${filename} doesn't export single class function`);
     }

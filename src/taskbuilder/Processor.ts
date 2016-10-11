@@ -4,12 +4,11 @@ import * as _ from 'lodash';
 
 
 import { TaskGraphNode } from '../deciders/TaskGraph';
-
-import { Task, WorkflowDef } from './interfaces';
-
 import { TaskGraphBuilder, TaskGraphNodeDeps } from './TaskGraphBuilder';
 import { genUtil } from './util';
 import { Config } from '../Config';
+import { BaseWorkflow } from '../entities/workflow/BaseWorkflow';
+import { Task } from './interfaces';
 
 // allow for overriding of some behavior via json
 const OPT_FILE_NAME = 'opts.json';
@@ -21,36 +20,36 @@ export interface ProcessorOpts {
 }
 
 export interface IProcessor {
-  process(args: any, cb: {(err: null | Error, tg: TaskGraphNode | null)});
+  process(args: any, graphKey: string, cb: {(err: null | Error, tg: TaskGraphNode | null)});
 }
 
 export class Processor implements IProcessor {
   private currentPath: string[];
   private config: Config;
   private opts: ProcessorOpts;
-  private workflowDef: WorkflowDef;
+  private workflowDef: BaseWorkflow;
 
-  constructor(config: Config, workflowDef: WorkflowDef, path: string[] | null, opts: ProcessorOpts) {
+  constructor(config: Config, workflowDef: BaseWorkflow, path: string[] | null, opts: ProcessorOpts) {
     this.workflowDef = workflowDef;
     this.config = config;
     this.opts = opts || {};
 
-    var name = this.workflowDef.getHandlerName();
+    var name = this.workflowDef.name;
     this.currentPath = path && path.length ? path.concat(name) : [name];
   }
 
-  process(args: any, cb: {(err: null | Error, tg: TaskGraphNode | null)}) {
+  process(args: any, graphKey: string, cb: {(err: null | Error, tg: TaskGraphNode | null)}) {
     if (typeof args === 'function') {
       cb = args;
       args = {};
     }
 
-    this.processWorkflowDef(args, this.workflowDef, cb);
+    this.processWorkflowDef(args, graphKey, this.workflowDef, cb);
   }
 
-  processWorkflowDef(args: any, workflowDef: any, cb: {(err: Error | null, tg: TaskGraphNode | null)}) {
+  processWorkflowDef(args: any, graphKey: string, workflowDef: BaseWorkflow, cb: {(err: Error | null, tg: TaskGraphNode | null)}) {
 
-    const taskGraphObj = workflowDef.getTaskGraph();
+    const taskGraphObj = workflowDef.decider(args);
     const taskGraphKeys = Object.keys(taskGraphObj);
 
     async.map<any, TaskGraphNode>(taskGraphKeys,
@@ -60,7 +59,7 @@ export class Processor implements IProcessor {
         tasks = _.compact(tasks);
         if (tasks.length === 0) { return cb(null, null); }
 
-        cb(null, this.createTaskGraph(this.workflowDef.graphKey || this.workflowDef.getHandlerName(), args, tasks));
+        cb(null, this.createTaskGraph(graphKey || this.workflowDef.getHandlerName(), args, tasks));
       });
   }
 
@@ -80,11 +79,9 @@ export class Processor implements IProcessor {
         return cb(new Error('No workflow found in registry for:' + node.workflow));
       }
 
-      let subWorkflowDef = new TargetWorkflow(this.config, this.opts);
-      subWorkflowDef.graphKey = nodeName;
-      let subProcessor = new Processor(this.config, subWorkflowDef, this.getCurrentPath(), this.opts);
+      let subProcessor = new Processor(this.config, TargetWorkflow.getHandler(), this.getCurrentPath(), this.opts);
 
-      subProcessor.process(args, (err, taskGraph) => {
+      subProcessor.process(args, nodeName, (err, taskGraph) => {
         let newNode;
 
         if (taskGraph) {
@@ -181,23 +178,33 @@ export class Processor implements IProcessor {
    }
    }
    */
-  wrapTask(args, name, taskDef): TaskGraphNode {
-    let newNode = _.clone(taskDef) as TaskGraphNodeDeps;
-
-    newNode.id = this.buildId(name);
-    newNode.type = 'activity';
-    newNode.name = name;
-    newNode.deps = taskDef.dependsOn || [];
-    newNode.maxRetry = taskDef.maxRetry || this.getMaxRetry();
-
+  wrapTask(args: any, name: string, taskDef: Task): TaskGraphNode {
     var path = this.getCurrentPath();
 
     if (!path) { path = [name]; }
     else { path = path.concat(name); }
 
-    newNode.currentPath = path;
-    return newNode;
+    let newTaskGraphNodeDeps: TaskGraphNodeDeps;
+    let newNode = _.clone(taskDef);
+
+    if (!newNode.activity || newNode.workflow) {
+      throw new Error('Missing activity or workflow keys.');
+    }
+
+    newTaskGraphNodeDeps = {
+      id: this.buildId(name),
+      handler: newNode.activity || 'unknown activity!',
+      type: 'activity',
+      name: name,
+      deps: newNode.dependsOn || [],
+      maxRetry: newNode.maxRetry || this.getMaxRetry(),
+      currentPath: path,
+      parameters: newNode.parameters || {}
+    };
+
+    return newTaskGraphNodeDeps;
   }
+
 
   getMaxRetry(): number {
     return this.opts.maxRetry || GRAPH_MAX_RETRY;

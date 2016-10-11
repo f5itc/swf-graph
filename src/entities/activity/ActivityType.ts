@@ -1,5 +1,5 @@
 import {
-  ActivityType as SWFActivtyType,
+  ActivityType as SWFActivityType,
   Workflow
 } from 'simple-swf/build/src/entities';
 
@@ -8,7 +8,7 @@ import { BaseActivity, FTLActivity } from './BaseActivity';
 import { BaseHandler } from '../BaseHandler';
 import { Config } from '../../Config';
 
-export class ActivityType extends SWFActivtyType implements BaseHandler {
+export class ActivityType extends SWFActivityType implements BaseHandler {
   ActivityHandler: typeof FTLActivity;
   config: Config;
   loadLocation: string;
@@ -40,6 +40,5 @@ export class ActivityType extends SWFActivtyType implements BaseHandler {
 
   getMaxRetry(): number | null {
     return this.ActivityHandler.maxRetry || null;
-
   }
 }

@@ -13,7 +13,7 @@ module.exports = function getConfig() {
     ],
 
     workflows: [
-      path.join(__dirname + '/build/', 'workflows')
+      path.join(__dirname, 'workflows')
     ],
 
     notifier:   {
