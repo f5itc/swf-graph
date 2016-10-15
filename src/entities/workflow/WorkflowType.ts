@@ -8,6 +8,7 @@ import { Workflow as SWFWorkflow } from 'simple-swf/build/src/entities';
 import { Processor } from '../../taskbuilder/Processor';
 
 import { inspect } from 'util';
+import { validator } from '../../lib/validator';
 
 export class WorkflowType implements BaseHandler {
   WorkflowHandler: BaseWorkflow;
@@ -24,14 +25,22 @@ export class WorkflowType implements BaseHandler {
     this.config = config;
   }
 
-  submit(input: any, initialEnv: any, opts: any, SWFWorkflow: SWFWorkflow, cb: {(err: Error | null, result?: any)}) {
+  submit(initialEnv: any, opts: any, SWFWorkflow: SWFWorkflow, cb: {(err: Error | null, result?: any)}) {
     let processor = new Processor(this.config, this.WorkflowHandler, null, {});
 
-    processor.process(_.clone(input), '', (err, taskGraph) => {
+    processor.process(_.clone(initialEnv), '', (err, taskGraph) => {
       if (err) { return cb(err); }
-      console.log('TASKGRAPH:', inspect(taskGraph, null, 10));
 
-      // process.exit(0);
+      // TODO: Implement validation of workflow entities
+      // const failureReason = validator.validate(this.config, taskGraph);
+      //
+      // if (failureReason) {
+      //   this.config.logger.error('invalid job');
+      //   this.config.logger.error(failureReason);
+      //   return cb(new Error('invalid job'));
+      // }
+      // process.exit(1);
+
       SWFWorkflow.startWorkflow(this.getHandlerName() + '_' + shortId.generate(),
         taskGraph, initialEnv, opts,
         (err, info) => {

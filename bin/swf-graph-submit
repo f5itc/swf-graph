@@ -12,7 +12,8 @@ theController.init('config.js',
       process.exit(1);
     }
     theController.submitWorkflowExecution('createDeployment',
-      { deploymentId: 'test', name: 'Test Name...' },
+      { deploymentId: 'test', name: 'Test Name...' }, // initial env/workflow input
+      {},                                             // swf workflow exec opts
       (err, result) => {
         console.log(err, result);
       });

@@ -1,40 +1,75 @@
 import * as path from 'path';
+import * as Joi from 'joi';
+import * as bluebird from 'bluebird';
+
 import { ActivityType } from './ActivityType';
-import { FTLActivity } from './BaseActivity';
+import { FTLActivity, FTLRunCallback } from './BaseActivity';
 import { Registry } from '../Registry';
+import { Config } from '../../Config';
+
+const activitySchema = Joi.object({
+  execute: Joi.func().arity(1).required(),
+  output: Joi.func().arity(1).required(),
+  schema: Joi.object().required(),
+  version: Joi.string().min(3).required(),
+  getHandlerName: Joi.func()
+}).unknown(true).required();
 
 export class ActivityRegistry extends Registry<ActivityType> {
-  wrapModule(filename: string, handler: any): ActivityType {
-    if (handler.default) { handler = handler.default; }
+  wrapModule(filename: string, activityDefObj: any): ActivityType {
+    if (activityDefObj.default) { activityDefObj = activityDefObj.default; }
 
-    if (typeof handler !== 'function') {
-      throw new Error(`activity module ${filename} doesn't export single class function`);
-    }
 
     let name: string;
-    if (handler.getHandlerName && handler.getHandlerName()) {
-      name = handler.getHandlerName();
-    } else {
-      handler.getHandlerName = function (): string {
-        return path.basename(filename, path.extname(filename));
-      };
-      name = handler.getHandlerName();
-    }
+    activityDefObj.getHandlerName = function (): string {
+      return path.basename(filename, path.extname(filename));
+    };
+
+    name = activityDefObj.getHandlerName();
     if (!name) {
       throw new Error('missing activity name');
     }
-    if (!handler.validateTask) {
-      throw new Error(`activity module ${name} does not have a static validateTask function`);
+
+    // Ensure the provided object has the correct shape
+    const {error} = Joi.validate(activityDefObj, activitySchema);
+
+    if (error) {
+      throw new Error(`Error validating ${name} activity: ` + error);
     }
-    if (!handler.prototype.run) {
-      throw new Error(`activity module ${name} does not implement a run method`);
+
+    interface WrapperHasLogger {
+      logger: any;
     }
-    if (!handler.prototype.status) {
-      throw new Error(`activity module ${name} does not implement a status method`);
+
+    class FTLWrapper <T extends FTLActivity> implements WrapperHasLogger {
+      logger: any;
+
+      constructor(config) { this.logger = config.logger; };
+
+      run(params, cb) {
+        return bluebird.resolve(activityDefObj.execute.bind(this)(params))
+          .then(function (results) {
+            return bluebird.resolve(activityDefObj.output(results))
+              .then(function (res) {
+                cb(null, res.status, res.env);
+              });
+          }).catch(function (e) {
+            return cb(e);
+          });
+      };
+
+
+      status() { return activityDefObj.status ? activityDefObj.status() : ''; };
+
+      stop() { return activityDefObj.stop ? activityDefObj.stop() : () => {}; };
+
+      static getHandlerName() { return activityDefObj.getHandlerName(); };
+
+      static validateTask(parameters: any): string | null {
+        return '';
+      }
     }
-    if (!handler.prototype.stop) {
-      throw new Error(`activity module ${name} does not implement a stop method`);
-    }
-    return new ActivityType(handler as typeof FTLActivity, filename, this.config);
+
+    return new ActivityType(FTLWrapper as typeof FTLActivity, filename, this.config);
   }
 }

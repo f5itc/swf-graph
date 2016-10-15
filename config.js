@@ -9,7 +9,7 @@ module.exports = function getConfig() {
     region: process.env.AWS_REGION || 'us-west-1',
 
     activities: [
-      path.join(__dirname + '/build/', 'activities')
+      path.join(__dirname, 'activities')
     ],
 
     workflows: [

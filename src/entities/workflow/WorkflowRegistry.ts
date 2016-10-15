@@ -15,7 +15,8 @@ const workflowSchema = Joi.object({
 }).unknown(false).required();
 
 export class WorkflowRegistry extends Registry<WorkflowType> {
-  wrapModule(filename: string, workflowDefObj: FTLWorkflowDef): WorkflowType {
+  wrapModule(filename: string, workflowDefObj: FTLWorkflowDef | any): WorkflowType {
+    if (workflowDefObj.default) { workflowDefObj = workflowDefObj.default; }
 
     let name: string = path.basename(filename, path.extname(filename));
     if (!name) {

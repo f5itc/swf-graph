@@ -138,7 +138,7 @@ export class Control {
     });
   }
 
-  submitWorkflowExecution(workflowName: string, workflowArgs: any,
+  submitWorkflowExecution(workflowName: string, input: any, SWFOpts: any,
                           cb: {(err?: Error | null, result?: any)}) {
 
     let config = this.config;
@@ -149,16 +149,7 @@ export class Control {
       return cb(null, new Error('No workflow found in registry for:' + workflowName));
     }
 
-    // TODO: Implement validation of workflow entities
-    // const failureReason = validator.validate(config, result);
-    //
-    // if (failureReason) {
-    //   config.logger.error('invalid job');
-    //   config.logger.error(failureReason);
-    //   return cb(new Error('invalid job'));
-    // }
-
-    TargetWorkflow.submit(workflowArgs, {}, {}, this.workflow,
+    TargetWorkflow.submit(input, SWFOpts, this.workflow,
       (err, info) => {
         if (err) { return cb(err); }
 

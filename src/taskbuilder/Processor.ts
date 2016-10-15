@@ -27,7 +27,7 @@ export class Processor implements IProcessor {
   private currentPath: string[];
   private config: Config;
   private opts: ProcessorOpts;
-  private workflowDef: BaseWorkflow;
+  workflowDef: BaseWorkflow;
 
   constructor(config: Config, workflowDef: BaseWorkflow, path: string[] | null, opts: ProcessorOpts) {
     this.workflowDef = workflowDef;
@@ -36,6 +36,10 @@ export class Processor implements IProcessor {
 
     var name = this.workflowDef.name;
     this.currentPath = path && path.length ? path.concat(name) : [name];
+  }
+
+  getWorkflowName(): string {
+    return this.workflowDef.name;
   }
 
   process(args: any, graphKey: string, cb: {(err: null | Error, tg: TaskGraphNode | null)}) {

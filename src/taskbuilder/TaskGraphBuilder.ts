@@ -60,6 +60,7 @@ export class TaskGraphBuilder {
     return {
       type: 'decision',
       handler: 'taskGraph',
+      workflowName: this.processor.getWorkflowName(),
       currentPath: this.processor.getCurrentPath(),
       id: this.id,
       name: this.name,

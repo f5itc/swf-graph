@@ -15,10 +15,10 @@ export interface FTLRunCallback {
 // we make this nicer for non-TS implementors by throwing erros instead
 // of using an abstract class
 export class FTLActivity {
-  constructor(parameters: any, env?: any, config?: Config) {
+  constructor(config?: Config) {
   }
 
-  run(cb: FTLRunCallback) {
+  run(params, cb: FTLRunCallback) {
     throw new Error('run must be extended by child class');
   }
 
@@ -59,8 +59,8 @@ export class BaseActivity extends SWFActivity {
   }
 
   run(input: any, env: any, cb: {(err: Error | null, status: TaskStatus)}) {
-    this.activity = new this.activityClass(input.parameters, env || {}, this.config);
-    this.activity.run((err, status, env) => {
+    this.activity = new this.activityClass(this.config);
+    this.activity.run(env || {}, (err, status, env) => {
       if (err) {
         return cb(err, {status: 'failure'});
       }

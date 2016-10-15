@@ -3,35 +3,37 @@ import { spawn, ChildProcess } from 'child_process';
 import { S3 } from 'aws-sdk';
 import { FTLActivity } from '../../src';
 import { Config } from '../Config';
+import * as Joi from 'joi';
 const MAX_LENGTH = 32768;
 
-export default class Script extends FTLActivity {
-  script: string;
-  scriptUrl: string | null;
-  bucket: string | null;
-  command: string;
-  args: string[];
-  s3: S3;
-  scr: ChildProcess;
-  stopped: boolean;
-  cbCalled: boolean;
-  alreadyKilled: boolean;
-  forceKillTimeout: NodeJS.Timer;
+import * as Bluebird from 'bluebird';
 
-  constructor(params: any, env?: any, config?: Config) {
-    super(params, env, config);
+export default {
+  version: '1.0',
+
+  execute(params) {
     this.script = params.script;
     this.scriptUrl = params.scriptUrl;
     this.bucket = params.bucket;
     this.command = params.command || 'bash';
     this.args = params.args || ['-c'];
     this.s3 = new S3();
-  }
 
-  run(cb: {(err: Error | null, res: any)}) {
-    if (this.scriptUrl && this.bucket) { this.runS3Script(cb); }
-    else { this.runScript(this.script, cb); }
-  }
+
+    return Bluebird.fromCallback(function (cb) {
+      if (this.scriptUrl && this.bucket) {
+        this.runS3Script(cb);
+
+      } else {
+        this.runScript(this.script, cb);
+      }
+    });
+
+  },
+
+  schema: Joi.object({
+    id: Joi.string().guid().required(),
+  }).required(),
 
   runS3Script(cb: {(err: Error | null, res: any)}) {
     this.s3.getObject({
@@ -43,7 +45,11 @@ export default class Script extends FTLActivity {
       const script = resp.Body.toString('utf8');
       this.runScript(script, cb);
     });
-  }
+  },
+
+  output(result) {
+    return {status: 'complete', env: result};
+  },
 
   runScript(script: string, cb: {(err: Error | null, res: any)}) {
     const args = this.args.concat([script.trim()]);
@@ -81,7 +87,7 @@ export default class Script extends FTLActivity {
 
       cb(null, this.truncateOutput(output));
     });
-  }
+  },
 
   truncateOutput(output: {stdout: string, stderr: string}): {stdout: string, stderr: string} {
     if ((output.stdout.length + output.stderr.length) < MAX_LENGTH) {
@@ -92,7 +98,7 @@ export default class Script extends FTLActivity {
     output.stdout = output.stdout.substring(0, Math.floor(MAX_LENGTH / 2) - 10);
     output.stderr = output.stderr.substring(0, Math.floor(MAX_LENGTH / 2) - 10);
     return output;
-  }
+  },
 
   stop(cb) {
     if (this.cbCalled) { return; }
@@ -107,13 +113,13 @@ export default class Script extends FTLActivity {
 
     this.forceKillTimeout = setTimeout(() => this.scr.kill('SIGKILL'), 1000);
     this.scr.kill();
-  }
+  },
 
   status() {
     return 'running';
-  }
+  },
 
-  static validateTask(params) {
+  validateTask(params) {
     var haveS3Script = (params.scriptUrl && params.bucket);
     var haveTextScript = !!params.script;
 
@@ -123,4 +129,4 @@ export default class Script extends FTLActivity {
 
     return null;
   }
-}
+};

@@ -46,6 +46,7 @@ export interface TaskGraphParameters {
 
 export interface TaskGraphGraphNode extends TaskGraphNode {
   parameters: TaskGraphParameters;
+  workflowName: string;
 }
 
 export interface TaskGraphMarkerNode extends TaskGraphNode {
