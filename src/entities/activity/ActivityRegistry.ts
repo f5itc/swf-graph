@@ -47,6 +47,13 @@ export class ActivityRegistry extends Registry<ActivityType> {
       constructor(config) { this.logger = config.logger; };
 
       run(params, cb) {
+        // Ensure the provided object has the correct shape
+        const {error} = Joi.validate(params, activityDefObj.schema);
+
+        if (error) {
+          cb(new Error(`Error validating ${name} params : ` + error));
+        }
+
         return bluebird.resolve(activityDefObj.execute.bind(this)(params))
           .then(function (results) {
             return bluebird.resolve(activityDefObj.output(results))
