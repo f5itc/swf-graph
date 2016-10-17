@@ -14,6 +14,7 @@ export interface TaskGraphNode {
   currentPath: string[];
   parameters: any;
   maxRetry?: number;
+  workflowName?: string;
 }
 
 export interface TaskGraphActivityNode extends TaskGraphNode {
@@ -46,7 +47,6 @@ export interface TaskGraphParameters {
 
 export interface TaskGraphGraphNode extends TaskGraphNode {
   parameters: TaskGraphParameters;
-  workflowName?: string;
 }
 
 export interface TaskGraphMarkerNode extends TaskGraphNode {
@@ -90,7 +90,7 @@ export default class TaskGraph extends BaseDecider {
     const input = task.getWorkflowInput();
 
     if (input.handler !== 'taskGraph') {
-      return cb(new Error('invalid handler for taskGrah'));
+      return cb(new Error('invalid handler for taskGraph'));
     }
 
     const parameters = input.parameters;
