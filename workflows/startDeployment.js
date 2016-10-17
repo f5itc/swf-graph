@@ -3,7 +3,7 @@ var Joi = require('joi');
 
 module.exports = {
   schema: Joi.object({
-    deployerId: Joi.string().guid().required(),
+    deployerId: Joi.string().required(),
     name:       Joi.string().min(1).required(),
   }).required(),
 
@@ -14,12 +14,13 @@ module.exports = {
 
       setDeploymentStarting: {
         activity: 'setDeploymentDocState',
+        input:    (env) => ({ state: 'Starting', id: env.deploymentId }),
         handler:  'setDeploymentDocState'
       },
 
       setDeploymentStarted: {
         dependsOn: ['setDeploymentStarting'],
-        input:     (results) => ({ deployment: results.startNewDeployment }),
+        input:     (env) => ({ state: 'Started', id: env.deploymentId }),
         handler:   'setDeploymentDocState',
         activity:  'setDeploymentDocState',
       },
@@ -29,7 +30,8 @@ module.exports = {
 
   output: function(results) {
     return {
-      env: {
+      status: 'Complete',
+      env:    {
         deployment: results.startDeployment
       }
     };

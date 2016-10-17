@@ -3,9 +3,9 @@ var Joi = require('joi');
 
 module.exports = {
   schema: Joi.object({
-    deployerId: Joi.string().guid().required(),
+    deployerId: Joi.string().required(),
     name:       Joi.string().min(1).required(),
-  }).required(),
+  }).required().unknown(true),
 
   version: '1.0',
 
@@ -14,17 +14,18 @@ module.exports = {
 
       createDeploymentDoc: {
         activity: 'createDeploymentDoc',
+        input:     (env) => ({}),
       },
 
       startNewDeployment: {
         dependsOn: ['createDeploymentDoc'],
-        input:     (results) => ({ deployment: results.createDeploymentDoc }),
+        // input:     (env) => ({ deployment: results.createDeploymentDoc }),
         workflow:  'startDeployment'
       },
 
-      setDeploymentDocState: {
+      setDeploymentStateCreated: {
         dependsOn: ['startNewDeployment'],
-        input:     (results) => ({ deployment: results.startNewDeployment }),
+        input:     (env) => ({ state: 'Running', id: env.deploymentId }),
         activity:  'setDeploymentDocState',
       },
 
