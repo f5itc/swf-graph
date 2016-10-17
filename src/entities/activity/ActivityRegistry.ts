@@ -51,6 +51,7 @@ export class ActivityRegistry extends Registry<ActivityType> {
         const {error} = Joi.validate(params, activityDefObj.schema);
 
         if (error) {
+          console.log('Error validating params: ', params, error);
           cb(new Error(`Error validating ${name} params : ` + error));
         }
 

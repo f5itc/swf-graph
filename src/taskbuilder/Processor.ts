@@ -203,7 +203,8 @@ export class Processor implements IProcessor {
       deps: newNode.dependsOn || [],
       maxRetry: newNode.maxRetry || this.getMaxRetry(),
       currentPath: path,
-      parameters: newNode.parameters || {}
+      parameters: newNode.parameters || {},
+      workflowName: this.getWorkflowName()
     };
 
     return newTaskGraphNodeDeps;

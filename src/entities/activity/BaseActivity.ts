@@ -60,7 +60,28 @@ export class BaseActivity extends SWFActivity {
 
   run(input: any, env: any, cb: {(err: Error | null, status: TaskStatus)}) {
     this.activity = new this.activityClass(this.config);
-    this.activity.run(env || {}, (err, status, env) => {
+    // input is activity descriptor node
+
+    let activityInput = input || {};
+
+    if (input.workflowName) {
+      const workflowType = this.config.workflows.getModule(input.workflowName);
+
+      if (!workflowType) {
+        throw new Error('missing workflow type ' + input.workflowName);
+      }
+
+      const workflowHandler = workflowType.getHandler();
+      const activities = workflowHandler.decider({});
+      const thisActivityDefObj = activities[input.name];
+
+      if (thisActivityDefObj.input) {
+        activityInput = thisActivityDefObj.input(env);
+      } else { activityInput = env; }
+
+    }
+
+    this.activity.run(activityInput, (err, status, env) => {
       if (err) {
         return cb(err, {status: 'failure'});
       }
