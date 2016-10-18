@@ -30,10 +30,12 @@ export class Control {
     });
   }
 
-  init(configFile: string, cb: {(err: Error | null, entities?: InitedEntities)}) {
-    const configFunc = require(path.join(process.cwd(), configFile));
+  init(configObj: any, cb: {(err: Error | null, entities?: InitedEntities)}) {
+    let configFunc = (() => (configObj));
     const config = new Config(configFunc);
+
     this.config = config;
+
     registration.init(config, (err, entities) => {
       if (err) { return cb(err); }
 
