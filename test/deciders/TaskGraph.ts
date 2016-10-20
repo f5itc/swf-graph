@@ -16,7 +16,7 @@ import {
   default as TaskGraph,
   TaskGraphParameters,
   TaskGraphNode,
-  TaskGraphGraph
+  TaskGraphGraph,
 } from '../../src/deciders/TaskGraph';
 
 interface getModuleStub { (name: string): ActivityType | null; }
