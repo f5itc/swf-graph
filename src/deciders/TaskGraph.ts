@@ -349,7 +349,11 @@ export default class TaskGraph extends BaseDecider {
             startCountSubWorkflows++;
             const maxRetry = tgNode.maxRetry || this.FTLConfig.getOpt('maxRetry');
 
-            filteredStartChildWorkflow.bind(decisionTask)(tgNode.id, tgNode, {maxRetry: maxRetry}, inputFunc);
+            if (workflowDetails) {
+              filteredStartChildWorkflow.bind(decisionTask)(tgNode.id, tgNode, {maxRetry: maxRetry}, inputFunc);
+            } else {
+              decisionTask.startChildWorkflow(tgNode.id, tgNode, {maxRetry: maxRetry});
+            }
           }
         }
         else if (node.handler === 'recordMarker') {
@@ -374,7 +378,11 @@ export default class TaskGraph extends BaseDecider {
           let opts = this.buildOpts(node);
           opts['maxRetry'] = node.maxRetry || handlerActType.getMaxRetry() || this.FTLConfig.getOpt('maxRetry');
 
-          filteredScheduleTask.bind(decisionTask)(node.id, node, handlerActType, opts, inputFunc);
+          if (workflowDetails) {
+            filteredScheduleTask.bind(decisionTask)(node.id, node, handlerActType, opts, inputFunc);
+          } else {
+            decisionTask.scheduleTask(node.id, node, handlerActType, opts);
+          }
         }
       }
     }
@@ -399,7 +407,11 @@ export default class TaskGraph extends BaseDecider {
         }
       }
 
-      filteredCompleteWorkflow.bind(decisionTask)({status: 'success'}, outputFunc);
+      if (workflowDetails) {
+        filteredCompleteWorkflow.bind(decisionTask)({status: 'success'}, outputFunc);
+      } else {
+        decisionTask.completeWorkflow({status: 'success'});
+      }
     }
 
   }
