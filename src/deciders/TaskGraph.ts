@@ -1,10 +1,14 @@
-import { Workflow } from 'simple-swf/build/src/entities';
+import { Workflow, ActivityType } from 'simple-swf/build/src/entities';
 import { ConfigOverride } from 'simple-swf/build/src/SWFConfig';
 import { DecisionTask, EventData } from 'simple-swf/build/src/tasks';
 import * as _ from 'lodash';
+import * as Joi from 'joi';
 
 import { BaseDecider } from '../entities';
 import { Config } from '../Config';
+
+import { TaskStatus, TaskInput } from 'simple-swf/build/src/interfaces';
+import { WorkflowType } from '../entities/workflow/WorkflowType';
 
 export interface TaskGraphNode {
   type: 'decision' | 'activity';
@@ -15,6 +19,7 @@ export interface TaskGraphNode {
   parameters: any;
   maxRetry?: number;
   workflowName?: string;
+  parentWorkflow?: any;
 }
 
 export interface TaskGraphActivityNode extends TaskGraphNode {
@@ -73,6 +78,96 @@ export interface NodeDetails {
   state: string;
 }
 
+export interface HasBuildFilteredTaskInput {
+  filteredBuildInitialControlDoc?(maxRetry: number);
+  filteredBuildTaskInput?(input: any, filterFunc?: {(env: any): any});
+  filteredCompleteWorkflow(result: TaskStatus, opts: ConfigOverride, filterFunc?: {(env: any): any});
+  filteredScheduleTask(activityId: string, input: any, activity: ActivityType, opts: ConfigOverride, filterFunc?: {(env: any): any});
+  filteredStartChildWorkflow(workflowId: string, input: any, opts: ConfigOverride, filterFunc?: {(env: any): any});
+}
+
+// TODO: un-hackify this.
+const SWF_MAX_RETRY = 5;
+// Override methods that use buildTaskInput.
+
+function filteredBuildInitialControlDoc(maxRetry: number = SWF_MAX_RETRY) {
+  return {executionCount: 1, maxRetry};
+};
+
+function filteredBuildTaskInput(input: any, filterFunc?: {(env: any): any}) {
+  return JSON.stringify({
+    input: input,
+    env: filterFunc ? filterFunc(this.getEnv()) : this.getEnv(),
+    originWorkflow: this.getOriginWorkflow()
+  } as TaskInput);
+};
+
+function filteredScheduleTask(activityId: string,
+                              input: any,
+                              activity: ActivityType,
+                              opts: ConfigOverride,
+                              filterFunc?: {(env: any): any}) {
+  let maxRetry = opts['maxRetry'] as number || activity.maxRetry;
+  let taskInput = filteredBuildTaskInput.bind(this)(input, filterFunc);
+
+  this.decisions.push({
+    entities: ['activity'],
+    overrides: opts,
+    decision: {
+      decisionType: 'ScheduleActivityTask',
+      scheduleActivityTaskDecisionAttributes: {
+        input: taskInput,
+        activityId: activityId,
+        activityType: {
+          name: activity.name,
+          version: activity.version
+        },
+        control: JSON.stringify(filteredBuildInitialControlDoc.bind(this)(maxRetry))
+      }
+    }
+  });
+};
+
+function filteredStartChildWorkflow(workflowId: string,
+                                    input: any,
+                                    opts: ConfigOverride = {},
+                                    filterFunc?: {(env: any): any}) {
+  let maxRetry = opts['maxRetry'] as number;
+  this.decisions.push({
+    entities: ['workflow', 'decision'],
+    overrides: opts,
+    decision: {
+      decisionType: 'StartChildWorkflowExecution',
+      startChildWorkflowExecutionDecisionAttributes: {
+        workflowId: workflowId,
+        workflowType: {
+          name: this.workflow.name,
+          version: this.workflow.version
+        },
+        input: filteredBuildTaskInput.bind(this)(input, filterFunc),
+        control: JSON.stringify(filteredBuildInitialControlDoc.bind(this)(maxRetry))
+      }
+    }
+  });
+};
+
+function filteredCompleteWorkflow(result: TaskStatus,
+                                  opts: ConfigOverride = {},
+                                  filterFunc?: {(env: any): any}) {
+
+  result.env = filterFunc ? filterFunc(this.getEnv()) : this.getEnv();
+  this.decisions.push({
+    entities: ['workflow'],
+    overrides: opts,
+    decision: {
+      decisionType: 'CompleteWorkflowExecution',
+      completeWorkflowExecutionDecisionAttributes: {
+        result: JSON.stringify(result)
+      }
+    }
+  });
+};
+
 export default class TaskGraph extends BaseDecider {
   maxRunningWorkflow: number;
 
@@ -93,21 +188,158 @@ export default class TaskGraph extends BaseDecider {
       return cb(new Error('invalid handler for taskGraph'));
     }
 
+    let workflowName = input.workflowName;
+    let isWorkflowTask = workflowName ? true : false;
+    let workflowType;
+    let workflowDetails, parentWorkflowDetails;
+
+    if (isWorkflowTask) {
+      // 1. Validate current workflow target exists
+      // 2. If a parent workflow exists, find this key in parent workflow and run input from it on env
+      workflowType = this.FTLConfig.workflows.getModule(workflowName);
+
+      if (!workflowType) {
+        return cb(new Error('missing workflow type ' + workflowName));
+      }
+
+      workflowDetails = {
+        name: input.workflowName,
+        workflowType: workflowType
+      };
+
+      let hasParentWorkflow = input.parentWorkflow ? true : false;
+
+      if (hasParentWorkflow) {
+        // Used for output methods
+        let parentWorkflowName = input.parentWorkflow.workflowName;
+        let parentWorkflowTaskKey = input.parentWorkflow.taskName;
+        const parentWorkflowType = this.FTLConfig.workflows.getModule(parentWorkflowName);
+
+        if (!parentWorkflowType) {
+          return cb(new Error('missing parent workflow type: ' + parentWorkflowName
+                              + ' - while processing workflow: ' + workflowName));
+        }
+
+        // Validate that the parent workflow has a task at the expected key
+        // We need this later to find the output() if defined.
+        const env = task.getEnv();
+        const parentWorkflowHandler = parentWorkflowType.getHandler();
+        const parentWFtaskObjects = parentWorkflowHandler.decider(env);
+        const taskDefObj = parentWFtaskObjects[parentWorkflowTaskKey];
+
+        parentWorkflowDetails = {
+          name: parentWorkflowName,
+          workflowType: parentWorkflowType,
+          taskKey: parentWorkflowTaskKey,
+          taskDefObj: taskDefObj,
+        };
+
+        if (!taskDefObj) {
+          console.log('INPUT:', input);
+          console.log('ERROR:', 'could not find task ' + parentWorkflowTaskKey + ' in parent workflow ' + parentWorkflowName);
+          return cb(new Error('could not find task ' + parentWorkflowTaskKey + ' in parent workflow ' + parentWorkflowName));
+        }
+      }
+    }
+
     const parameters = input.parameters;
-    this.decide(parameters, task);
+    this.decide(parameters, task, workflowDetails, parentWorkflowDetails);
 
     cb();
   }
 
-  decide(parameters: TaskGraphParameters, decisionTask: DecisionTask) {
+
+  decide(parameters: TaskGraphParameters,
+         decisionTask: DecisionTask,
+         workflowDetails?: {name: string, workflowType: WorkflowType},
+         parentWorkflowDetails?: {
+           name: string,
+           workflowType: WorkflowType,
+           taskKey: string,
+           taskDefObj: any,
+         },
+         cb?: {(Error?)}) {
+
     const graph = parameters.graph;
     const groupedEvents = decisionTask.getGroupedEvents();
+    const env = decisionTask.getEnv();
 
     let next = this.getNextNodes(graph, groupedEvents);
     let startCountByHandler = {};
     let startCountSubWorkflows = 0;
+    let workflowHandler;
+
+    // Pre validate all next node inputs against their schema if present
+    for (let node of next.nodes) {
+      let input = env;
+
+      if (workflowDetails) {
+        workflowHandler = workflowDetails.workflowType.getHandler();
+        const tasks = workflowHandler.decider(env);
+        const currentNodeTaskDefObj = tasks[node.name];
+
+        if (currentNodeTaskDefObj && currentNodeTaskDefObj.input) {
+          input = currentNodeTaskDefObj.input(env);
+
+          if (workflowDetails) {
+            workflowHandler = workflowDetails.workflowType.getHandler();
+            const tasks = workflowHandler.decider(env);
+            const currentNodeTaskDefObj = tasks[node.name];
+
+            if (currentNodeTaskDefObj && currentNodeTaskDefObj.input) {
+              input = currentNodeTaskDefObj.input(env);
+            }
+
+            let targetSchema;
+
+            if (node.type === 'decision' && node.workflowName) {
+              const workflowType = this.FTLConfig.workflows.getModule(node.workflowName);
+
+              if (!workflowType) {
+                throw new Error('missing workflow type ' + node.handler);
+              }
+
+              targetSchema = workflowType.getHandler().schema;
+
+            } else {
+              const handlerActType = this.activities.getModule(node.handler);
+              if (!handlerActType) {
+                throw new Error('missing activity type ' + node.handler);
+              }
+
+              targetSchema = handlerActType.ActivityHandler.getSchema();
+            }
+
+            const {error} = Joi.validate(input, targetSchema);
+
+            if (error) {
+              console.log('Error validating params: ', input, error);
+              if (cb) {
+                cb(new Error(`Error validating ${node.name} params : ` + error));
+              } else {
+                throw new Error(`Error validating ${node.name} params : ` + error);
+              }
+            }
+          }
+        }
+      }
+    }
+
 
     for (let node of next.nodes) {
+      let inputFunc;
+
+      if (workflowDetails) {
+        workflowHandler = workflowDetails.workflowType.getHandler();
+        const tasks = workflowHandler.decider(env);
+        const currentNodeTaskDefObj = tasks[node.name];
+
+        if (currentNodeTaskDefObj && currentNodeTaskDefObj.input) {
+          inputFunc = currentNodeTaskDefObj.input;
+          console.log('------------> INPUT ENV:', env, node.name + '->' + workflowDetails.name + ' receives:', inputFunc(env));
+        }
+      }
+
       if (node.type === 'decision') {
         // TODO: somehow hand off to a child? need to make this more generic but just hard code for now...
         if (node.handler === 'taskGraph') {
@@ -117,7 +349,7 @@ export default class TaskGraph extends BaseDecider {
             startCountSubWorkflows++;
             const maxRetry = tgNode.maxRetry || this.FTLConfig.getOpt('maxRetry');
 
-            decisionTask.startChildWorkflow(tgNode.id, tgNode, {maxRetry: maxRetry});
+            filteredStartChildWorkflow.bind(decisionTask)(tgNode.id, tgNode, {maxRetry: maxRetry}, inputFunc);
           }
         }
         else if (node.handler === 'recordMarker') {
@@ -142,7 +374,7 @@ export default class TaskGraph extends BaseDecider {
           let opts = this.buildOpts(node);
           opts['maxRetry'] = node.maxRetry || handlerActType.getMaxRetry() || this.FTLConfig.getOpt('maxRetry');
 
-          decisionTask.scheduleTask(node.id, node, handlerActType, opts);
+          filteredScheduleTask.bind(decisionTask)(node.id, node, handlerActType, opts, inputFunc);
         }
       }
     }
@@ -156,7 +388,18 @@ export default class TaskGraph extends BaseDecider {
       decisionTask.failWorkflow('failed to reschedule previously failed events', JSON.stringify(failedToReschedule).slice(0, 250));
     } else if (next.finished) {
       // TODO: better results
-      decisionTask.completeWorkflow({status: 'success'});
+      let outputFunc;
+
+      // If there is an output func defined on the parent workflow use it to filter env
+      if (workflowDetails) {
+        if (parentWorkflowDetails && parentWorkflowDetails.taskDefObj.output) {
+          outputFunc = parentWorkflowDetails.taskDefObj.output;
+        } else if (workflowHandler && workflowHandler.output) {
+          outputFunc = workflowHandler.output;
+        }
+      }
+
+      filteredCompleteWorkflow.bind(decisionTask)({status: 'success'}, outputFunc);
     }
 
   }
