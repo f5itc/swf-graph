@@ -30,6 +30,10 @@ export class ActivityType extends SWFActivityType implements BaseHandler {
     return this.ActivityHandler.getHandlerName();
   }
 
+  getSchema(): string {
+    return this.ActivityHandler.getSchema();
+  }
+
   validateTask(parameters: any): string | null {
     return this.ActivityHandler.validateTask(parameters);
   }

@@ -46,6 +46,9 @@ export class ActivityRegistry extends Registry<ActivityType> {
 
       constructor(config) { this.logger = config.logger; };
 
+      getSchema() { return activityDefObj.schema; };
+      static getSchema() { return activityDefObj.schema; };
+
       run(params, cb) {
         // Ensure the provided object has the correct shape
         const {error} = Joi.validate(params, activityDefObj.schema);

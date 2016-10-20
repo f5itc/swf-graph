@@ -30,7 +30,13 @@ export class FTLActivity {
     throw new Error('stop must be extended by child class');
   }
 
+  getSchema() {}
+
   static getHandlerName(): string {
+    return '';
+  }
+
+  static getSchema(): string {
     return '';
   }
 
@@ -63,8 +69,10 @@ export class BaseActivity extends SWFActivity {
     // input is activity descriptor node
 
     let activityInput = input || {};
+    let thisActivityDefObj;
 
     if (input.workflowName) {
+      // Running as a workflow.
       const workflowType = this.config.workflows.getModule(input.workflowName);
 
       if (!workflowType) {
@@ -72,13 +80,9 @@ export class BaseActivity extends SWFActivity {
       }
 
       const workflowHandler = workflowType.getHandler();
-      const activities = workflowHandler.decider({});
-      const thisActivityDefObj = activities[input.name];
-
-      if (thisActivityDefObj.input) {
-        activityInput = thisActivityDefObj.input(env);
-      } else { activityInput = env; }
-
+      const activities = workflowHandler.decider(env);
+      thisActivityDefObj = activities[input.name];
+      activityInput = env;
     }
 
     this.activity.run(activityInput, (err, status, env) => {
@@ -94,6 +98,13 @@ export class BaseActivity extends SWFActivity {
         textStatus = 'success';
         info = status;
       }
+
+      // If workflow task node defines its own output(), run env through it
+      if (thisActivityDefObj && thisActivityDefObj.output) {
+        console.log('------------> OUTPUT ENV:', env, input.name + '->' + input.workflowName + ' outputs:', thisActivityDefObj.output(env));
+        env = thisActivityDefObj.output(env);
+      }
+
       cb(null, {status: textStatus, info, env});
     });
   }
