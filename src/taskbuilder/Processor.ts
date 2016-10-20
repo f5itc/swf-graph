@@ -28,9 +28,17 @@ export class Processor implements IProcessor {
   private config: Config;
   private opts: ProcessorOpts;
   workflowDef: BaseWorkflow;
+  parentWorkflow: any | null;
 
-  constructor(config: Config, workflowDef: BaseWorkflow, path: string[] | null, opts: ProcessorOpts) {
+  constructor(config: Config,
+              workflowDef: BaseWorkflow,
+              parentWorkflow: any | null,
+              path: string[] | null,
+              opts: ProcessorOpts) {
+
     this.workflowDef = workflowDef;
+    this.parentWorkflow = parentWorkflow;
+
     this.config = config;
     this.opts = opts || {};
 
@@ -83,7 +91,13 @@ export class Processor implements IProcessor {
         return cb(new Error('No workflow found in registry for:' + node.workflow));
       }
 
-      let subProcessor = new Processor(this.config, TargetWorkflow.getHandler(), this.getCurrentPath(), this.opts);
+      let parentWorkflow = {
+        workflowName: this.workflowDef.name,
+        taskName: nodeName
+      };
+
+      let subProcessor = new Processor(this.config, TargetWorkflow.getHandler(),
+        parentWorkflow, this.getCurrentPath(), this.opts);
 
       subProcessor.process(args, nodeName, (err, taskGraph) => {
         let newNode;
@@ -101,7 +115,13 @@ export class Processor implements IProcessor {
   }
 
   createTaskGraph(name: string, args: any, tasks): TaskGraphNode {
-    return new TaskGraphBuilder(name, args, tasks, this).getGraph();
+    let graph = new TaskGraphBuilder(name, args, tasks, this).getGraph();
+
+    return graph;
+  }
+
+  getParentWorkflowDetails() {
+    return this.parentWorkflow;
   }
 
   getCurrentPathStr() {
