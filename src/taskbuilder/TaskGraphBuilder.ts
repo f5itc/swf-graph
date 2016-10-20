@@ -61,6 +61,7 @@ export class TaskGraphBuilder {
       type: 'decision',
       handler: 'taskGraph',
       workflowName: this.processor.getWorkflowName(),
+      parentWorkflow: this.processor.getParentWorkflowDetails(),
       currentPath: this.processor.getCurrentPath(),
       id: this.id,
       name: this.name,
