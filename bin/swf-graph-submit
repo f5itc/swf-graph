@@ -4,7 +4,7 @@ var Controller = require('../').lib.Control;
 
 var theController = new Controller();
 
-theController.init('config.js',
+theController.init(require('../config'),
   function(err, entities) {
 
     if (err) {
