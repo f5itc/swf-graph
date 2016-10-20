@@ -3,8 +3,7 @@ var Joi = require('joi');
 
 module.exports = {
   schema: Joi.object({
-    deployerId: Joi.string().required(),
-    name:       Joi.string().min(1).required(),
+    deploymentId: Joi.string().required()
   }).required(),
 
   version: '1.0.0',
