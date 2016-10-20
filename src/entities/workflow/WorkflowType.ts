@@ -26,20 +26,10 @@ export class WorkflowType implements BaseHandler {
   }
 
   submit(initialEnv: any, opts: any, SWFWorkflow: SWFWorkflow, cb: {(err: Error | null, result?: any)}) {
-    let processor = new Processor(this.config, this.WorkflowHandler, null, {});
+    let processor = new Processor(this.config, this.WorkflowHandler, null, null, {});
 
     processor.process(_.clone(initialEnv), '', (err, taskGraph) => {
       if (err) { return cb(err); }
-
-      // TODO: Implement validation of workflow entities
-      // const failureReason = validator.validate(this.config, taskGraph);
-      //
-      // if (failureReason) {
-      //   this.config.logger.error('invalid job');
-      //   this.config.logger.error(failureReason);
-      //   return cb(new Error('invalid job'));
-      // }
-      // process.exit(1);
 
       SWFWorkflow.startWorkflow(this.getHandlerName() + '_' + shortId.generate(),
         taskGraph, initialEnv, opts,
