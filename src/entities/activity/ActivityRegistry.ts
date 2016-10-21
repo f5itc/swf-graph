@@ -47,6 +47,7 @@ export class ActivityRegistry extends Registry<ActivityType> {
       constructor(config) { this.logger = config.logger; };
 
       getSchema() { return activityDefObj.schema; };
+
       static getSchema() { return activityDefObj.schema; };
 
       run(params, cb) {
@@ -58,9 +59,9 @@ export class ActivityRegistry extends Registry<ActivityType> {
           cb(new Error(`Error validating ${name} params : ` + error));
         }
 
-        return bluebird.resolve(activityDefObj.execute.bind(this)(params))
+        return bluebird.try(() => ( activityDefObj.execute.bind(this)(params)))
           .then(function (results) {
-            return bluebird.resolve(activityDefObj.output(results))
+            return bluebird.try(() => ( activityDefObj.output.bind(this)(results)))
               .then(function (res) {
                 cb(null, res.status, res.env);
               });
