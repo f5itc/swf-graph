@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as async from 'async';
 import * as shortId from 'shortid';
+import * as Joi from 'joi';
 
 import * as _ from 'lodash';
 
@@ -151,15 +152,22 @@ export class Control {
       return cb(null, new Error('No workflow found in registry for:' + workflowName));
     }
 
+    let workflowSchema = TargetWorkflow.getHandler().schema;
+
+    // Ensure the provided object has the correct shape
+    const {error} = Joi.validate(input, workflowSchema);
+
+    if (error) {
+      return cb(new Error(`Error validating ${workflowName} workflow params: ` + error));
+    }
+
+
     TargetWorkflow.submit(input, SWFOpts, this.workflow,
       (err, info) => {
         if (err) { return cb(err); }
 
-        config.logger.info(info);
+        config.logger.info('Submitted workflow ' + info);
         cb(info);
-
-        console.log('New workflow execution submitted; exiting.');
-        process.exit(0);
       });
   }
 }
