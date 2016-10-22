@@ -202,9 +202,12 @@ export default class TaskGraph extends BaseDecider {
         return cb(new Error('missing workflow type ' + workflowName));
       }
 
+      const env = task.getEnv();
+
       workflowDetails = {
         name: input.workflowName,
-        workflowType: workflowType
+        workflowType: workflowType,
+        tasks: workflowType.getHandler().decider(env)
       };
 
       let hasParentWorkflow = input.parentWorkflow ? true : false;
@@ -222,7 +225,6 @@ export default class TaskGraph extends BaseDecider {
 
         // Validate that the parent workflow has a task at the expected key
         // We need this later to find the output() if defined.
-        const env = task.getEnv();
         const parentWorkflowHandler = parentWorkflowType.getHandler();
         const parentWFtaskObjects = parentWorkflowHandler.decider(env);
         const taskDefObj = parentWFtaskObjects[parentWorkflowTaskKey];
@@ -251,7 +253,7 @@ export default class TaskGraph extends BaseDecider {
 
   decide(parameters: TaskGraphParameters,
          decisionTask: DecisionTask,
-         workflowDetails?: {name: string, workflowType: WorkflowType},
+         workflowDetails?: {name: string, workflowType: WorkflowType, tasks: any},
          parentWorkflowDetails?: {
            name: string,
            workflowType: WorkflowType,
@@ -267,58 +269,45 @@ export default class TaskGraph extends BaseDecider {
     let next = this.getNextNodes(graph, groupedEvents);
     let startCountByHandler = {};
     let startCountSubWorkflows = 0;
-    let workflowHandler;
 
     // Pre validate all next node inputs against their schema if present
     for (let node of next.nodes) {
       let input = env;
 
       if (workflowDetails) {
-        workflowHandler = workflowDetails.workflowType.getHandler();
-        const tasks = workflowHandler.decider(env);
-        const currentNodeTaskDefObj = tasks[node.name];
+        const currentNodeTaskDefObj = workflowDetails.tasks[node.name];
 
         if (currentNodeTaskDefObj && currentNodeTaskDefObj.input) {
           input = currentNodeTaskDefObj.input(env);
 
-          if (workflowDetails) {
-            workflowHandler = workflowDetails.workflowType.getHandler();
-            const tasks = workflowHandler.decider(env);
-            const currentNodeTaskDefObj = tasks[node.name];
+          let targetSchema;
 
-            if (currentNodeTaskDefObj && currentNodeTaskDefObj.input) {
-              input = currentNodeTaskDefObj.input(env);
+          if (node.type === 'decision' && node.workflowName) {
+            const workflowType = this.FTLConfig.workflows.getModule(node.workflowName);
+
+            if (!workflowType) {
+              throw new Error('missing workflow type ' + node.handler);
             }
 
-            let targetSchema;
+            targetSchema = workflowType.getHandler().schema;
 
-            if (node.type === 'decision' && node.workflowName) {
-              const workflowType = this.FTLConfig.workflows.getModule(node.workflowName);
+          } else {
+            const handlerActType = this.activities.getModule(node.handler);
+            if (!handlerActType) {
+              throw new Error('missing activity type ' + node.handler);
+            }
 
-              if (!workflowType) {
-                throw new Error('missing workflow type ' + node.handler);
-              }
+            targetSchema = handlerActType.ActivityHandler.getSchema();
+          }
 
-              targetSchema = workflowType.getHandler().schema;
+          const {error} = Joi.validate(input, targetSchema);
 
+          if (error) {
+            console.log('Error validating params: ', input, error);
+            if (cb) {
+              cb(new Error(`Error validating ${node.name} params : ` + error));
             } else {
-              const handlerActType = this.activities.getModule(node.handler);
-              if (!handlerActType) {
-                throw new Error('missing activity type ' + node.handler);
-              }
-
-              targetSchema = handlerActType.ActivityHandler.getSchema();
-            }
-
-            const {error} = Joi.validate(input, targetSchema);
-
-            if (error) {
-              console.log('Error validating params: ', input, error);
-              if (cb) {
-                cb(new Error(`Error validating ${node.name} params : ` + error));
-              } else {
-                throw new Error(`Error validating ${node.name} params : ` + error);
-              }
+              throw new Error(`Error validating ${node.name} params : ` + error);
             }
           }
         }
@@ -330,9 +319,7 @@ export default class TaskGraph extends BaseDecider {
       let inputFunc;
 
       if (workflowDetails) {
-        workflowHandler = workflowDetails.workflowType.getHandler();
-        const tasks = workflowHandler.decider(env);
-        const currentNodeTaskDefObj = tasks[node.name];
+        const currentNodeTaskDefObj = workflowDetails.tasks[node.name];
 
         if (currentNodeTaskDefObj && currentNodeTaskDefObj.input) {
           inputFunc = currentNodeTaskDefObj.input;
@@ -392,14 +379,33 @@ export default class TaskGraph extends BaseDecider {
     const failedToReschedule = failedToReFail.concat(failedToReTimeOut);
 
     if (failedToReschedule.length > 0) {
-      this.logger.warn('failed to reschedule all previously failed events');
-      decisionTask.failWorkflow('failed to reschedule previously failed events', JSON.stringify(failedToReschedule).slice(0, 250));
+      this.logger.warn('failed to reschedule previously failed event(s)');
+
+      // TODO: 1. If events have failed to be rescheduled, add a revert marker
+      // TODO: 2. If there are no longer any pending events, build a list of those
+      // TODO:    and schedule revert activities
+      // TODO: 3. If all revert activities have completed, fail workflow execution
+      // TODO: 4. If revert activities also fail, fail workflow execution
+      if (groupedEvents && groupedEvents.marker && groupedEvents.marker['TaskFailed']) {
+        // TODO: Handle taskFailed logic
+        console.log('DETECTED TASKFAILED ON:', failedToReschedule[0], 'Processing revert, then failing workflow.');
+        decisionTask.failWorkflow('failed to reschedule previously failed events', JSON.stringify(failedToReschedule).slice(0, 250));
+      } else {
+        // TODO: If no pending tasks, schedule revert for those that failed.
+        // TODO: Otherwise only add marker.
+
+        decisionTask.addMarker('TaskFailed', {});
+        // decisionTask.failWorkflow('failed to reschedule previously failed events', JSON.stringify(failedToReschedule).slice(0, 250));
+      }
+
     } else if (next.finished) {
       // TODO: better results
       let outputFunc;
 
       // If there is an output func defined on the parent workflow use it to filter env
       if (workflowDetails) {
+        let workflowHandler = workflowDetails.workflowType.getHandler();
+
         if (parentWorkflowDetails && parentWorkflowDetails.taskDefObj.output) {
           outputFunc = parentWorkflowDetails.taskDefObj.output;
         } else if (workflowHandler && workflowHandler.output) {
@@ -415,6 +421,7 @@ export default class TaskGraph extends BaseDecider {
     }
 
   }
+
 
   buildOpts(node: TaskGraphActivityNode): ConfigOverride {
     if (node.opts) {
