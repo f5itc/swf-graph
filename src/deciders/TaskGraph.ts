@@ -323,7 +323,9 @@ export default class TaskGraph extends BaseDecider {
 
         if (currentNodeTaskDefObj && currentNodeTaskDefObj.input) {
           inputFunc = currentNodeTaskDefObj.input;
-          console.log('------------> INPUT ENV:', env, node.name + '->' + workflowDetails.name + ' receives:', inputFunc(env));
+          console.log('--> WORKFLOW ' + workflowDetails.name + ' env is:\n', env,
+            '\n--> ' + node.name + '->' +
+            ' receives:\n', inputFunc(env));
         }
       }
 

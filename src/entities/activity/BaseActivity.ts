@@ -87,6 +87,8 @@ export class BaseActivity extends SWFActivity {
 
     this.activity.run(activityInput, (err, status, env) => {
       if (err) {
+        console.log('ERROR:', err);
+        console.log(err.stack);
         return cb(err, {status: 'failure'});
       }
       let info: any = null;
