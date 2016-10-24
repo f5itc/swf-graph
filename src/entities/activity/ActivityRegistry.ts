@@ -51,15 +51,15 @@ export class ActivityRegistry extends Registry<ActivityType> {
       static getSchema() { return activityDefObj.schema; };
 
       run(params, cb) {
-        // Ensure the provided object has the correct shape
-        const {error} = Joi.validate(params, activityDefObj.schema);
+        // Ensure the provided object is correct shape (may default some props)
+        const {error, value} = Joi.validate(params, activityDefObj.schema);
 
         if (error) {
           console.log('Error validating params: ', params, error);
           cb(new Error(`Error validating ${name} params : ` + error));
         }
 
-        return bluebird.try(() => ( activityDefObj.execute.bind(this)(params)))
+        return bluebird.try(() => ( activityDefObj.execute.bind(this)(value)))
           .then(function (results) {
             return bluebird.try(() => ( activityDefObj.output.bind(this)(results)))
               .then(function (res) {

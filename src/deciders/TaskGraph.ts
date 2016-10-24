@@ -94,10 +94,10 @@ function filteredBuildInitialControlDoc(maxRetry: number = SWF_MAX_RETRY) {
   return {executionCount: 1, maxRetry};
 };
 
-function filteredBuildTaskInput(input: any, filterFunc?: {(env: any): any}) {
+function filteredBuildTaskInput(input: any, inputEnv: any) {
   return JSON.stringify({
     input: input,
-    env: filterFunc ? filterFunc(this.getEnv()) : this.getEnv(),
+    env: inputEnv,
     originWorkflow: this.getOriginWorkflow()
   } as TaskInput);
 };
@@ -106,9 +106,9 @@ function filteredScheduleTask(activityId: string,
                               input: any,
                               activity: ActivityType,
                               opts: ConfigOverride,
-                              filterFunc?: {(env: any): any}) {
+                              inputEnv: any) {
   let maxRetry = opts['maxRetry'] as number || activity.maxRetry;
-  let taskInput = filteredBuildTaskInput.bind(this)(input, filterFunc);
+  let taskInput = filteredBuildTaskInput.bind(this)(input, inputEnv);
 
   this.decisions.push({
     entities: ['activity'],
@@ -131,7 +131,7 @@ function filteredScheduleTask(activityId: string,
 function filteredStartChildWorkflow(workflowId: string,
                                     input: any,
                                     opts: ConfigOverride = {},
-                                    filterFunc?: {(env: any): any}) {
+                                    inputEnv: any) {
   let maxRetry = opts['maxRetry'] as number;
   this.decisions.push({
     entities: ['workflow', 'decision'],
@@ -144,7 +144,7 @@ function filteredStartChildWorkflow(workflowId: string,
           name: this.workflow.name,
           version: this.workflow.version
         },
-        input: filteredBuildTaskInput.bind(this)(input, filterFunc),
+        input: filteredBuildTaskInput.bind(this)(input, inputEnv),
         control: JSON.stringify(filteredBuildInitialControlDoc.bind(this)(maxRetry))
       }
     }
@@ -153,9 +153,9 @@ function filteredStartChildWorkflow(workflowId: string,
 
 function filteredCompleteWorkflow(result: TaskStatus,
                                   opts: ConfigOverride = {},
-                                  filterFunc?: {(env: any): any}) {
+                                  outputEnv: any) {
 
-  result.env = filterFunc ? filterFunc(this.getEnv()) : this.getEnv();
+  result.env = outputEnv;
   this.decisions.push({
     entities: ['workflow'],
     overrides: opts,
@@ -245,7 +245,7 @@ export default class TaskGraph extends BaseDecider {
     }
 
     const parameters = input.parameters;
-    this.decide(parameters, task, workflowDetails, parentWorkflowDetails);
+    this.decide(parameters, task, workflowDetails, parentWorkflowDetails, cb);
 
     cb();
   }
@@ -271,14 +271,14 @@ export default class TaskGraph extends BaseDecider {
     let startCountSubWorkflows = 0;
 
     // Pre validate all next node inputs against their schema if present
-    for (let node of next.nodes) {
-      let input = env;
+    if (workflowDetails) {
+      for (let node of next.nodes) {
+        let inputEnv = _.clone(env);
 
-      if (workflowDetails) {
         const currentNodeTaskDefObj = workflowDetails.tasks[node.name];
 
         if (currentNodeTaskDefObj && currentNodeTaskDefObj.input) {
-          input = currentNodeTaskDefObj.input(env);
+          inputEnv = currentNodeTaskDefObj.input(env);
 
           let targetSchema;
 
@@ -290,7 +290,6 @@ export default class TaskGraph extends BaseDecider {
             }
 
             targetSchema = workflowType.getHandler().schema;
-
           } else {
             const handlerActType = this.activities.getModule(node.handler);
             if (!handlerActType) {
@@ -300,12 +299,12 @@ export default class TaskGraph extends BaseDecider {
             targetSchema = handlerActType.ActivityHandler.getSchema();
           }
 
-          const {error} = Joi.validate(input, targetSchema);
+          const {error} = Joi.validate(inputEnv, targetSchema);
 
           if (error) {
-            console.log('Error validating params: ', input, error);
+            console.log('Error validating params: ', inputEnv, error);
             if (cb) {
-              cb(new Error(`Error validating ${node.name} params : ` + error));
+              return cb(new Error(`Error validating ${node.name} params : ` + error));
             } else {
               throw new Error(`Error validating ${node.name} params : ` + error);
             }
@@ -314,18 +313,17 @@ export default class TaskGraph extends BaseDecider {
       }
     }
 
-
     for (let node of next.nodes) {
-      let inputFunc;
+      let inputEnv = _.clone(env);
 
       if (workflowDetails) {
         const currentNodeTaskDefObj = workflowDetails.tasks[node.name];
 
         if (currentNodeTaskDefObj && currentNodeTaskDefObj.input) {
-          inputFunc = currentNodeTaskDefObj.input;
+          inputEnv = currentNodeTaskDefObj.input(env);
           console.log('--> WORKFLOW ' + workflowDetails.name + ' env is:\n', env,
             '\n--> ' + node.name + '->' +
-            ' receives:\n', inputFunc(env));
+            ' receives:\n', inputEnv);
         }
       }
 
@@ -339,7 +337,7 @@ export default class TaskGraph extends BaseDecider {
             const maxRetry = tgNode.maxRetry || this.FTLConfig.getOpt('maxRetry');
 
             if (workflowDetails) {
-              filteredStartChildWorkflow.bind(decisionTask)(tgNode.id, tgNode, {maxRetry: maxRetry}, inputFunc);
+              filteredStartChildWorkflow.bind(decisionTask)(tgNode.id, tgNode, {maxRetry: maxRetry}, inputEnv);
             } else {
               decisionTask.startChildWorkflow(tgNode.id, tgNode, {maxRetry: maxRetry});
             }
@@ -368,7 +366,7 @@ export default class TaskGraph extends BaseDecider {
           opts['maxRetry'] = node.maxRetry || handlerActType.getMaxRetry() || this.FTLConfig.getOpt('maxRetry');
 
           if (workflowDetails) {
-            filteredScheduleTask.bind(decisionTask)(node.id, node, handlerActType, opts, inputFunc);
+            filteredScheduleTask.bind(decisionTask)(node.id, node, handlerActType, opts, inputEnv);
           } else {
             decisionTask.scheduleTask(node.id, node, handlerActType, opts);
           }
@@ -415,8 +413,9 @@ export default class TaskGraph extends BaseDecider {
         }
       }
 
+      let outputEnv = outputFunc ? outputFunc(env) : env;
       if (workflowDetails) {
-        filteredCompleteWorkflow.bind(decisionTask)({status: 'success'}, outputFunc);
+        filteredCompleteWorkflow.bind(decisionTask)({status: 'success'}, outputEnv);
       } else {
         decisionTask.completeWorkflow({status: 'success'});
       }
