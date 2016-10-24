@@ -216,6 +216,7 @@ export default class TaskGraph extends BaseDecider {
         // Used for output methods
         let parentWorkflowName = input.parentWorkflow.workflowName;
         let parentWorkflowTaskKey = input.parentWorkflow.taskName;
+        let parentWorkflowInitialEnv = input.parentWorkflow.env;
         const parentWorkflowType = this.FTLConfig.workflows.getModule(parentWorkflowName);
 
         if (!parentWorkflowType) {
@@ -226,7 +227,7 @@ export default class TaskGraph extends BaseDecider {
         // Validate that the parent workflow has a task at the expected key
         // We need this later to find the output() if defined.
         const parentWorkflowHandler = parentWorkflowType.getHandler();
-        const parentWFtaskObjects = parentWorkflowHandler.decider(env);
+        const parentWFtaskObjects = parentWorkflowHandler.decider(parentWorkflowInitialEnv);
         const taskDefObj = parentWFtaskObjects[parentWorkflowTaskKey];
 
         parentWorkflowDetails = {
@@ -324,6 +325,8 @@ export default class TaskGraph extends BaseDecider {
             startCountSubWorkflows++;
             const maxRetry = tgNode.maxRetry || this.FTLConfig.getOpt('maxRetry');
 
+            let parentEnv = decisionTask.getWorkflowTaskInput().env || {};
+            tgNode.parentWorkflow.env = parentEnv;
             if (workflowDetails) {
               filteredStartChildWorkflow.bind(decisionTask)(tgNode.id, tgNode, {maxRetry: maxRetry}, inputEnv);
             } else {
