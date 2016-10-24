@@ -325,9 +325,9 @@ export default class TaskGraph extends BaseDecider {
             startCountSubWorkflows++;
             const maxRetry = tgNode.maxRetry || this.FTLConfig.getOpt('maxRetry');
 
-            let parentEnv = decisionTask.getWorkflowTaskInput().env || {};
-            tgNode.parentWorkflow.env = parentEnv;
             if (workflowDetails) {
+              let parentEnv = decisionTask.getWorkflowTaskInput().env || {};
+              tgNode.parentWorkflow.env = parentEnv;
               filteredStartChildWorkflow.bind(decisionTask)(tgNode.id, tgNode, {maxRetry: maxRetry}, inputEnv);
             } else {
               decisionTask.startChildWorkflow(tgNode.id, tgNode, {maxRetry: maxRetry});
