@@ -228,6 +228,7 @@ describe('taskGraph', () => {
       dt.expects('rescheduleFailedEvents').once().returns([{failed: true}]);
       dt.expects('failWorkflow').once();
       dt.expects('completeWorkflow').never();
+      dt.expects('addMarker').once();
 
       tg.decide(mg, dt.object);
       dt.verify();
@@ -241,6 +242,7 @@ describe('taskGraph', () => {
       dt.expects('rescheduleTimedOutEvents').once().returns([{failed: true}]);
       dt.expects('failWorkflow').once();
       dt.expects('completeWorkflow').never();
+      dt.expects('addMarker').once();
 
       tg.decide(mg, dt.object);
       dt.verify();

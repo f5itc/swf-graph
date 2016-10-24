@@ -246,8 +246,6 @@ export default class TaskGraph extends BaseDecider {
 
     const parameters = input.parameters;
     this.decide(parameters, task, workflowDetails, parentWorkflowDetails, cb);
-
-    cb();
   }
 
 
@@ -395,7 +393,7 @@ export default class TaskGraph extends BaseDecider {
         // TODO: Otherwise only add marker.
 
         decisionTask.addMarker('TaskFailed', {});
-        // decisionTask.failWorkflow('failed to reschedule previously failed events', JSON.stringify(failedToReschedule).slice(0, 250));
+        decisionTask.failWorkflow('failed to reschedule previously failed events', JSON.stringify(failedToReschedule).slice(0, 250));
       }
 
     } else if (next.finished) {
@@ -421,6 +419,7 @@ export default class TaskGraph extends BaseDecider {
       }
     }
 
+    if (cb) { return cb(); }
   }
 
 
