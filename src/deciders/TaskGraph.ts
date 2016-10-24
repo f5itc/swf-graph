@@ -415,7 +415,6 @@ export default class TaskGraph extends BaseDecider {
   private validateSchema(inputEnv, node) {
     let targetSchema;
 
-    console.log('NODE:', node);
     if (node.type === 'decision' && node.workflowName) {
       const workflowType = this.FTLConfig.workflows.getModule(node.workflowName);
 

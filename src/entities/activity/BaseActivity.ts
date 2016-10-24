@@ -103,8 +103,11 @@ export class BaseActivity extends SWFActivity {
 
       // If workflow task node defines its own output(), run env through it
       if (thisActivityDefObj && thisActivityDefObj.output) {
-        console.log('------------> OUTPUT ENV:', env, input.name + '->' + input.workflowName + ' outputs:', thisActivityDefObj.output(env));
-        env = thisActivityDefObj.output(env);
+        let outputValue = thisActivityDefObj.output(env);
+
+        console.log('--> ACTIVITY ' + input.workflowName + '->' + input.name +
+                    ' env is:\n', env, '\n--> OUTPUT IS: ', outputValue);
+        env = outputValue;
       }
 
       cb(null, {status: textStatus, info, env});
