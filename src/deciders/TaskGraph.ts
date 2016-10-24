@@ -275,29 +275,12 @@ export default class TaskGraph extends BaseDecider {
 
         const currentNodeTaskDefObj = workflowDetails.tasks[node.name];
 
-        if (currentNodeTaskDefObj && currentNodeTaskDefObj.input) {
-          inputEnv = currentNodeTaskDefObj.input(env);
-
-          let targetSchema;
-
-          if (node.type === 'decision' && node.workflowName) {
-            const workflowType = this.FTLConfig.workflows.getModule(node.workflowName);
-
-            if (!workflowType) {
-              throw new Error('missing workflow type ' + node.handler);
-            }
-
-            targetSchema = workflowType.getHandler().schema;
-          } else {
-            const handlerActType = this.activities.getModule(node.handler);
-            if (!handlerActType) {
-              throw new Error('missing activity type ' + node.handler);
-            }
-
-            targetSchema = handlerActType.ActivityHandler.getSchema();
+        if (currentNodeTaskDefObj) {
+          if (currentNodeTaskDefObj.input) {
+            inputEnv = currentNodeTaskDefObj.input(env);
           }
 
-          const {error} = Joi.validate(inputEnv, targetSchema);
+          let {error} = this.validateSchema(inputEnv, node);
 
           if (error) {
             console.log('Error validating params: ', inputEnv, error);
@@ -318,10 +301,17 @@ export default class TaskGraph extends BaseDecider {
         const currentNodeTaskDefObj = workflowDetails.tasks[node.name];
 
         if (currentNodeTaskDefObj && currentNodeTaskDefObj.input) {
-          inputEnv = currentNodeTaskDefObj.input(env);
+          if (currentNodeTaskDefObj.input) {
+            inputEnv = currentNodeTaskDefObj.input(env);
+          }
+
+          let {value} = this.validateSchema(inputEnv, node);
+
           console.log('--> WORKFLOW ' + workflowDetails.name + ' env is:\n', env,
             '\n--> ' + node.name + '->' +
-            ' receives:\n', inputEnv);
+            ' receives:\n', value);
+
+          inputEnv = value;
         }
       }
 
@@ -420,6 +410,32 @@ export default class TaskGraph extends BaseDecider {
     }
 
     if (cb) { return cb(); }
+  }
+
+  private validateSchema(inputEnv, node) {
+    let targetSchema;
+
+    console.log('NODE:', node);
+    if (node.type === 'decision' && node.workflowName) {
+      const workflowType = this.FTLConfig.workflows.getModule(node.workflowName);
+
+      if (!workflowType) {
+        throw new Error('missing workflow type ' + node.handler);
+      }
+
+      targetSchema = workflowType.getHandler().schema;
+    } else {
+      const handlerActType = this.activities.getModule(node.handler);
+      if (!handlerActType) {
+        throw new Error('missing activity type ' + node.handler);
+      }
+
+      targetSchema = handlerActType.ActivityHandler.getSchema();
+    }
+
+    const {error, value} = Joi.validate(inputEnv, targetSchema);
+
+    return {error, value};
   }
 
 
