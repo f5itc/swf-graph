@@ -28,7 +28,9 @@ module.exports = {
 
       setDeploymentStateCreated: {
         dependsOn: ['startNewDeployment'],
-        input:     (env) => ({ state: 'Running', id: env.deploymentId }),
+        input:     (env) => {
+          return { state: 'Running', id: env.theId };
+        },
         activity:  'setDeploymentDocState',
       },
 
