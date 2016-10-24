@@ -391,20 +391,24 @@ export default class TaskGraph extends BaseDecider {
 
     } else if (next.finished) {
       // TODO: better results
-      let outputFunc;
+      let outputEnv = env;
 
       // If there is an output func defined on the parent workflow use it to filter env
       if (workflowDetails) {
         let workflowHandler = workflowDetails.workflowType.getHandler();
 
+        // First transform using this workflow's output handler
+        if (workflowHandler && workflowHandler.output) {
+          outputEnv = workflowHandler.output(env);
+        }
+
+        // Then, if this was a sub-workflow, transform using the parent workflow
+        // task entry for this child workflow execution
         if (parentWorkflowDetails && parentWorkflowDetails.taskDefObj.output) {
-          outputFunc = parentWorkflowDetails.taskDefObj.output;
-        } else if (workflowHandler && workflowHandler.output) {
-          outputFunc = workflowHandler.output;
+          outputEnv = parentWorkflowDetails.taskDefObj.output(env);
         }
       }
 
-      let outputEnv = outputFunc ? outputFunc(env) : env;
       if (workflowDetails) {
         filteredCompleteWorkflow.bind(decisionTask)({status: 'success'}, outputEnv);
       } else {

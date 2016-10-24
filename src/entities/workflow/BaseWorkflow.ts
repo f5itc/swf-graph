@@ -25,7 +25,7 @@ export class BaseWorkflow {
 
   decider(args: any) { };
 
-  output(results: any) { };
+  output(results: any): any { return results; };
 
   constructor(config: Config, workflowDef: FTLWorkflowDef) {
     this.version = workflowDef.version;
