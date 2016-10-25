@@ -399,13 +399,13 @@ export default class TaskGraph extends BaseDecider {
 
         // First transform using this workflow's output handler
         if (workflowHandler && workflowHandler.output) {
-          outputEnv = workflowHandler.output(env);
+          outputEnv = workflowHandler.output(env).env;
         }
 
         // Then, if this was a sub-workflow, transform using the parent workflow
         // task entry for this child workflow execution
         if (parentWorkflowDetails && parentWorkflowDetails.taskDefObj.output) {
-          outputEnv = parentWorkflowDetails.taskDefObj.output(outputEnv);
+          outputEnv = parentWorkflowDetails.taskDefObj.output(outputEnv).env;
         }
       }
 
