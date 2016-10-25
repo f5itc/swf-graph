@@ -20,7 +20,7 @@ var createDeploymentDoc = {
   output: function(result) {
     return {
       status: { createDeploymentDoc: 'completed' },
-      env:    { id: result }
+      env:    { id: result, newValueThatIWant: 10001 }
     };
   }
 };

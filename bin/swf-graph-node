@@ -1,7 +1,15 @@
 #!/usr/bin/env node
+'use strict';
 
 require('source-map-support').install();
 var Controller = require('../').lib.Control;
 
 new Controller().start({ config: require('../config'), activity: true, decider: true },
-  function(err, controller) { });
+  function(err, controller) {
+
+    if (err) {
+      console.log('ERROR ENCOUNTERED!: ', err);
+      process.exit(1);
+    }
+
+  });
