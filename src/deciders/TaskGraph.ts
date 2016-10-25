@@ -410,7 +410,7 @@ export default class TaskGraph extends BaseDecider {
       }
 
       if (workflowDetails) {
-        filteredCompleteWorkflow.bind(decisionTask)({status: 'success'}, outputEnv);
+        filteredCompleteWorkflow.bind(decisionTask)({status: 'success'}, null, outputEnv);
       } else {
         decisionTask.completeWorkflow({status: 'success'});
       }
