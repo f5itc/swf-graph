@@ -149,7 +149,7 @@ export class Control {
     let TargetWorkflow = workflowRegistry.getModule(workflowName);
 
     if (!TargetWorkflow) {
-      return cb(null, new Error('No workflow found in registry for:' + workflowName));
+      return cb(new Error('No workflow found in registry for:' + workflowName));
     }
 
     let workflowSchema = TargetWorkflow.getHandler().schema;
