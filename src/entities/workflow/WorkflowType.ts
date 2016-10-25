@@ -36,7 +36,8 @@ export class WorkflowType implements BaseHandler {
         (err, info) => {
           if (err) { return cb(err); }
 
-          this.config.logger.info(info);
+          // TODO: fix type declaration
+          // this.config.logger.info(info);
           cb(null, info);
         });
     });
