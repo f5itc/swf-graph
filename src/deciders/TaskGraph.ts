@@ -123,9 +123,6 @@ function filteredScheduleTask(activityId: string,
   input.workflow.initialEnv = envObjects.initialEnv;
   let taskInput = filteredBuildTaskInput.bind(this)(input, envObjects.inputEnv);
 
-  console.log('TASKINPUT IS:', taskInput);
-
-
   this.decisions.push({
     entities: ['activity'],
     overrides: opts,
