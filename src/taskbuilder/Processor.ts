@@ -3,7 +3,7 @@ import * as shortId from 'shortid';
 import * as _ from 'lodash';
 
 
-import { TaskGraphNode } from '../deciders/TaskGraph';
+import { TaskGraphNode, ParentWorkflowDetails } from '../deciders/TaskGraph';
 import { TaskGraphBuilder, TaskGraphNodeDeps } from './TaskGraphBuilder';
 import { genUtil } from './util';
 import { Config } from '../Config';
@@ -28,11 +28,11 @@ export class Processor implements IProcessor {
   private config: Config;
   private opts: ProcessorOpts;
   workflowDef: BaseWorkflow;
-  parentWorkflow: any | null;
+  parentWorkflow?: ParentWorkflowDetails | null;
 
   constructor(config: Config,
               workflowDef: BaseWorkflow,
-              parentWorkflow: any | null,
+              parentWorkflow: ParentWorkflowDetails | null,
               path: string[] | null,
               opts: ProcessorOpts) {
 
@@ -92,8 +92,8 @@ export class Processor implements IProcessor {
       }
 
       let parentWorkflow = {
-        workflowName: this.workflowDef.name,
-        taskName: nodeName
+        name: this.workflowDef.name,
+        taskKey: nodeName
       };
 
       let subProcessor = new Processor(this.config, TargetWorkflow.getHandler(),
@@ -224,7 +224,7 @@ export class Processor implements IProcessor {
       maxRetry: newNode.maxRetry || this.getMaxRetry(),
       currentPath: path,
       parameters: newNode.parameters || {},
-      workflowName: this.getWorkflowName()
+      workflow: {name: this.getWorkflowName()}
     };
 
     return newTaskGraphNodeDeps;

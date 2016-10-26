@@ -70,17 +70,20 @@ export class BaseActivity extends SWFActivity {
 
     let activityInput = input || {};
     let thisActivityDefObj;
+    let workflowName;
 
-    if (input.workflowName) {
+    let isWorkflowTask = input.workflow;
+    if (isWorkflowTask) {
       // Running as a workflow.
-      const workflowType = this.config.workflows.getModule(input.workflowName);
+      workflowName = input.workflow.name;
+      const workflowType = this.config.workflows.getModule(workflowName);
 
       if (!workflowType) {
-        throw new Error('missing workflow type ' + input.workflowName);
+        throw new Error('missing workflow type ' + workflowName);
       }
 
       const workflowHandler = workflowType.getHandler();
-      const activities = workflowHandler.decider(env);
+      const activities = workflowHandler.decider(input.workflow.initialEnv);
       thisActivityDefObj = activities[input.name];
       activityInput = env;
     }
@@ -102,10 +105,10 @@ export class BaseActivity extends SWFActivity {
       }
 
       // If workflow task node defines its own output(), run env through it
-      if (thisActivityDefObj && thisActivityDefObj.output) {
+      if (isWorkflowTask && thisActivityDefObj && thisActivityDefObj.output) {
         let outputValue = thisActivityDefObj.output(env);
 
-        console.log('--> ACTIVITY ' + input.workflowName + '->' + input.name +
+        console.log('--> ACTIVITY ' + workflowName + '->' + input.name +
                     ' env is:\n', env, '\n--> OUTPUT IS: ', outputValue);
         env = outputValue;
       }

@@ -10,6 +10,18 @@ import { Config } from '../Config';
 import { TaskStatus, TaskInput } from 'simple-swf/build/src/interfaces';
 import { WorkflowType } from '../entities/workflow/WorkflowType';
 
+export interface WorkflowDetails {
+  name: string;
+  initialEnv?: any;
+  tasks?: any;
+  workflowType?: WorkflowType;
+}
+
+export interface ParentWorkflowDetails extends WorkflowDetails {
+  taskKey?: string;
+  taskDefObj?: any;
+}
+
 export interface TaskGraphNode {
   type: 'decision' | 'activity';
   handler: string;
@@ -18,8 +30,8 @@ export interface TaskGraphNode {
   currentPath: string[];
   parameters: any;
   maxRetry?: number;
-  workflowName?: string;
-  parentWorkflow?: any;
+  workflow?: WorkflowDetails | null;
+  parentWorkflow?: ParentWorkflowDetails | null;
 }
 
 export interface TaskGraphActivityNode extends TaskGraphNode {
@@ -106,9 +118,13 @@ function filteredScheduleTask(activityId: string,
                               input: any,
                               activity: ActivityType,
                               opts: ConfigOverride,
-                              inputEnv: any) {
+                              envObjects: {initialEnv: any, inputEnv: any}) {
   let maxRetry = opts['maxRetry'] as number || activity.maxRetry;
-  let taskInput = filteredBuildTaskInput.bind(this)(input, inputEnv);
+  input.workflow.initialEnv = envObjects.initialEnv;
+  let taskInput = filteredBuildTaskInput.bind(this)(input, envObjects.inputEnv);
+
+  console.log('TASKINPUT IS:', taskInput);
+
 
   this.decisions.push({
     entities: ['activity'],
@@ -188,12 +204,14 @@ export default class TaskGraph extends BaseDecider {
       return cb(new Error('invalid handler for taskGraph'));
     }
 
-    let workflowName = input.workflowName;
-    let isWorkflowTask = workflowName ? true : false;
+    let workflow: WorkflowDetails = input.workflow;
+    let isWorkflowTask = workflow ? true : false;
     let workflowType;
     let workflowDetails, parentWorkflowDetails;
 
     if (isWorkflowTask) {
+      let workflowName = workflow.name;
+
       // 1. Validate current workflow target exists
       // 2. If a parent workflow exists, find this key in parent workflow and run input from it on env
       workflowType = this.FTLConfig.workflows.getModule(workflowName);
@@ -202,21 +220,22 @@ export default class TaskGraph extends BaseDecider {
         return cb(new Error('missing workflow type ' + workflowName));
       }
 
-      const env = task.getEnv();
+      const initialEnv = task.getWorkflowTaskInput().env || {};
 
       workflowDetails = {
-        name: input.workflowName,
+        name: workflowName,
         workflowType: workflowType,
-        tasks: workflowType.getHandler().decider(env)
+        tasks: workflowType.getHandler().decider(initialEnv),
+        initialEnv: initialEnv
       };
 
       let hasParentWorkflow = input.parentWorkflow ? true : false;
 
       if (hasParentWorkflow) {
         // Used for output methods
-        let parentWorkflowName = input.parentWorkflow.workflowName;
-        let parentWorkflowTaskKey = input.parentWorkflow.taskName;
-        let parentWorkflowInitialEnv = input.parentWorkflow.env;
+        let parentWorkflowName = input.parentWorkflow.name;
+        let parentWorkflowTaskKey = input.parentWorkflow.taskKey;
+        let parentWorkflowInitialEnv = input.parentWorkflow.initialEnv;
         const parentWorkflowType = this.FTLConfig.workflows.getModule(parentWorkflowName);
 
         if (!parentWorkflowType) {
@@ -246,19 +265,18 @@ export default class TaskGraph extends BaseDecider {
     }
 
     const parameters = input.parameters;
-    this.decide(parameters, task, workflowDetails, parentWorkflowDetails, cb);
+    this.decide(parameters,
+      task,
+      workflowDetails as WorkflowDetails,
+      parentWorkflowDetails as ParentWorkflowDetails,
+      cb);
   }
 
 
   decide(parameters: TaskGraphParameters,
          decisionTask: DecisionTask,
-         workflowDetails?: {name: string, workflowType: WorkflowType, tasks: any},
-         parentWorkflowDetails?: {
-           name: string,
-           workflowType: WorkflowType,
-           taskKey: string,
-           taskDefObj: any,
-         },
+         workflowDetails?: WorkflowDetails | undefined,
+         parentWorkflowDetails?: ParentWorkflowDetails | undefined,
          cb?: {(Error?)}) {
 
     const graph = parameters.graph;
@@ -326,8 +344,9 @@ export default class TaskGraph extends BaseDecider {
             const maxRetry = tgNode.maxRetry || this.FTLConfig.getOpt('maxRetry');
 
             if (workflowDetails) {
-              let parentEnv = decisionTask.getWorkflowTaskInput().env || {};
-              tgNode.parentWorkflow.env = parentEnv;
+              if (tgNode.parentWorkflow) {
+                tgNode.parentWorkflow.initialEnv = workflowDetails.initialEnv;
+              }
               filteredStartChildWorkflow.bind(decisionTask)(tgNode.id, tgNode, {maxRetry: maxRetry}, inputEnv);
             } else {
               decisionTask.startChildWorkflow(tgNode.id, tgNode, {maxRetry: maxRetry});
@@ -357,7 +376,9 @@ export default class TaskGraph extends BaseDecider {
           opts['maxRetry'] = node.maxRetry || handlerActType.getMaxRetry() || this.FTLConfig.getOpt('maxRetry');
 
           if (workflowDetails) {
-            filteredScheduleTask.bind(decisionTask)(node.id, node, handlerActType, opts, inputEnv);
+            filteredScheduleTask.bind(decisionTask)(node.id, node, handlerActType, opts,
+              {inputEnv, initialEnv: workflowDetails.initialEnv}
+            );
           } else {
             decisionTask.scheduleTask(node.id, node, handlerActType, opts);
           }
@@ -394,7 +415,7 @@ export default class TaskGraph extends BaseDecider {
       let outputEnv = env;
 
       // If there is an output func defined on the parent workflow use it to filter env
-      if (workflowDetails) {
+      if (workflowDetails && workflowDetails.workflowType) {
         let workflowHandler = workflowDetails.workflowType.getHandler();
 
         // First transform using this workflow's output handler
@@ -422,8 +443,9 @@ export default class TaskGraph extends BaseDecider {
   private validateSchema(inputEnv, node) {
     let targetSchema;
 
-    if (node.type === 'decision' && node.workflowName) {
-      const workflowType = this.FTLConfig.workflows.getModule(node.workflowName);
+    if (node.type === 'decision' && node.workflow) {
+
+      const workflowType = this.FTLConfig.workflows.getModule(node.workflow.name);
 
       if (!workflowType) {
         throw new Error('missing workflow type ' + node.handler);
