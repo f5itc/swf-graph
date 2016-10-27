@@ -199,12 +199,13 @@ export default class TaskGraph extends BaseDecider {
 
   getInitialWorkflowEnv(workflowInfo, cb: {(err: Error | null, initialEnv?: any)}) {
     let thisWorkflow = new WorkflowExecution(this.workflow, workflowInfo);
+    if (workflowInfo === null) { return cb(null, null); }
 
     thisWorkflow.getWorkflowExecutionHistory({}, (err, res) => {
-      if (err) { cb(err); }
+      if (err) { return cb(err); }
 
       if (res && res.wfInput && res.wfInput.env) {
-        cb(null, res.wfInput.env || {});
+        return cb(null, res.wfInput.env || {});
       }
     });
   }
@@ -219,27 +220,26 @@ export default class TaskGraph extends BaseDecider {
     let workflow: WorkflowDetails = input.workflow;
     let isWorkflowTask = workflow ? true : false;
     let workflowType;
-    let workflowDetails, parentWorkflowDetails;
+    var workflowDetails, parentWorkflowDetails;
     var initialParentEnv;
 
-    if (isWorkflowTask) {
-      let workflowName = workflow.name;
+    this.getInitialWorkflowEnv(task.getParentWorkflowInfo(),
+      (err, initialParentEnv) => {
+        if (isWorkflowTask) {
+          let workflowName = workflow.name;
 
-      // 1. Validate current workflow target exists
-      // 2. If a parent workflow exists, find this key in parent workflow and run input from it on env
-      workflowType = this.FTLConfig.workflows.getModule(workflowName);
+          // 1. Validate current workflow target exists
+          // 2. If a parent workflow exists, find this key in parent workflow and run input from it on env
+          workflowType = this.FTLConfig.workflows.getModule(workflowName);
 
-      if (!workflowType) {
-        return cb(new Error('missing workflow type ' + workflowName));
-      }
+          if (!workflowType) {
+            return cb(new Error('missing workflow type ' + workflowName));
+          }
 
-      let hasParentWorkflow = input.parentWorkflow ? true : false;
 
-      if (hasParentWorkflow) {
-        this.getInitialWorkflowEnv(task.getParentWorkflowInfo(),
-          (err, initialParentEnv) => {
-            if (err) { cb(err); }
+          if (err) { return cb(err); }
 
+          if (input.parentWorkflow) {
             // Used for output methods
             let parentWorkflowName = input.parentWorkflow.name;
             let parentWorkflowTaskKey = input.parentWorkflow.taskKey;
@@ -269,27 +269,30 @@ export default class TaskGraph extends BaseDecider {
               console.log('ERROR:', 'could not find task ' + parentWorkflowTaskKey + ' in parent workflow ' + parentWorkflowName);
               return cb(new Error('could not find task ' + parentWorkflowTaskKey + ' in parent workflow ' + parentWorkflowName));
             }
-          });
+          }
+
+
+          const initialEnv = task.getWorkflowTaskInput().env || {};
+
+          let deciderEnv = initialParentEnv ? initialParentEnv : initialEnv;
+          workflowDetails = {
+            name: workflowName,
+            workflowType: workflowType,
+            tasks: workflowType.getHandler().decider(deciderEnv),
+            initialEnv: initialEnv
+          };
+
+        }
+
+        const parameters = input.parameters;
+        this.decide(parameters,
+          task,
+          workflowDetails as WorkflowDetails,
+          parentWorkflowDetails as ParentWorkflowDetails,
+          cb);
       }
+    );
 
-      const initialEnv = task.getWorkflowTaskInput().env || {};
-
-      let deciderEnv = initialParentEnv ? initialParentEnv : initialEnv;
-      workflowDetails = {
-        name: workflowName,
-        workflowType: workflowType,
-        tasks: workflowType.getHandler().decider(deciderEnv),
-        initialEnv: initialEnv
-      };
-
-    }
-
-    const parameters = input.parameters;
-    this.decide(parameters,
-      task,
-      workflowDetails as WorkflowDetails,
-      parentWorkflowDetails as ParentWorkflowDetails,
-      cb);
   }
 
 
