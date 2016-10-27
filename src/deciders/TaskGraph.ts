@@ -36,6 +36,7 @@ export interface TaskGraphNode {
   maxRetry?: number;
   workflow?: WorkflowDetails | null;
   parentWorkflow?: ParentWorkflowDetails | null;
+  _inputEnv?: any;
 }
 
 export interface TaskGraphActivityNode extends TaskGraphNode {
@@ -265,12 +266,10 @@ export default class TaskGraph extends BaseDecider {
             };
 
             if (!taskDefObj) {
-              console.log('INPUT:', input);
-              console.log('ERROR:', 'could not find task ' + parentWorkflowTaskKey + ' in parent workflow ' + parentWorkflowName);
+              this.logger.fatal('ERROR:', 'could not find task ' + parentWorkflowTaskKey + ' in parent workflow ' + parentWorkflowName);
               return cb(new Error('could not find task ' + parentWorkflowTaskKey + ' in parent workflow ' + parentWorkflowName));
             }
           }
-
 
           const initialEnv = task.getWorkflowTaskInput().env || {};
 
@@ -304,7 +303,7 @@ export default class TaskGraph extends BaseDecider {
 
     const graph = parameters.graph;
     const groupedEvents = decisionTask.getGroupedEvents();
-    const env = decisionTask.getEnv();
+    const decisionTaskEnv = decisionTask.getEnv();
 
     let next = this.getNextNodes(graph, groupedEvents);
     let startCountByHandler = {};
@@ -313,23 +312,30 @@ export default class TaskGraph extends BaseDecider {
     // Pre validate all next node inputs against their schema if present
     if (workflowDetails) {
       for (let node of next.nodes) {
-        let inputEnv = _.clone(env);
+        let inputEnv; // env filtered by input func if present
 
         const currentNodeTaskDefObj = workflowDetails.tasks[node.name];
 
         if (currentNodeTaskDefObj) {
           if (currentNodeTaskDefObj.input) {
-            inputEnv = currentNodeTaskDefObj.input(env);
+            // Clone in case user-provided input method mutates passed env
+            inputEnv = currentNodeTaskDefObj.input(_.clone(decisionTaskEnv));
           }
 
-          let {error} = this.validateSchema(inputEnv, node);
+          let {error, value} = this.validateSchema(inputEnv || decisionTaskEnv, node);
+          node._inputEnv = value;
 
           if (error) {
-            console.log('Error validating params: ', inputEnv, error);
+
+            let currPath = node.currentPath.join('->');
+            this.logger.fatal(`Error in ${currPath} validating params: `, {
+              inputEnv,
+              error
+            });
             if (cb) {
-              return cb(new Error(`Error validating ${node.name} params : ` + error));
+              return cb(new Error(`Error in ${currPath} validating params: ` + error.message));
             } else {
-              throw new Error(`Error validating ${node.name} params : ` + error);
+              throw new Error(`Error in ${currPath} validating params: ` + error.message);
             }
           }
         }
@@ -337,24 +343,13 @@ export default class TaskGraph extends BaseDecider {
     }
 
     for (let node of next.nodes) {
-      let inputEnv = _.clone(env);
+      let inputEnv = node._inputEnv || decisionTaskEnv;
 
-      if (workflowDetails) {
-        const currentNodeTaskDefObj = workflowDetails.tasks[node.name];
-
-        if (currentNodeTaskDefObj && currentNodeTaskDefObj.input) {
-          if (currentNodeTaskDefObj.input) {
-            inputEnv = currentNodeTaskDefObj.input(env);
-          }
-
-          let {value} = this.validateSchema(inputEnv, node);
-
-          console.log('--> WORKFLOW ' + workflowDetails.name + ' env is:\n', env,
-            '\n--> ' + node.name + '->' +
-            ' receives:\n', value);
-
-          inputEnv = value;
-        }
+      if (node._inputEnv && workflowDetails) {
+        this.logger.info(node.currentPath.join('->'), {
+          workflowEnv: decisionTaskEnv,
+          postInputEnv: node._inputEnv
+        });
       }
 
       if (node.type === 'decision') {
@@ -378,7 +373,7 @@ export default class TaskGraph extends BaseDecider {
           decisionTask.addMarker(node.id, node.parameters.status);
         }
         else {
-          this.logger.warn('couldn\'t find hander for child node', node);
+          this.logger.warn('couldn\'t find hander for child node: ' + JSON.stringify(node));
         }
       }
       else {
@@ -418,7 +413,7 @@ export default class TaskGraph extends BaseDecider {
       // TODO: 4. If revert activities also fail, fail workflow execution
       if (groupedEvents && groupedEvents.marker && groupedEvents.marker['TaskFailed']) {
         // TODO: Handle taskFailed logic
-        console.log('DETECTED TASKFAILED ON:', failedToReschedule[0], 'Processing revert, then failing workflow.');
+        this.logger.info('DETECTED TASKFAILED ON: ' + failedToReschedule[0] + ' Processing revert, then failing workflow.');
         decisionTask.failWorkflow('failed to reschedule previously failed events', JSON.stringify(failedToReschedule).slice(0, 250));
       } else {
         // TODO: If no pending tasks, schedule revert for those that failed.
@@ -430,26 +425,27 @@ export default class TaskGraph extends BaseDecider {
 
     } else if (next.finished) {
       // TODO: better results
-      let outputEnv = env;
+      let outputEnv;
 
       // If there is an output func defined on the parent workflow use it to filter env
       if (workflowDetails && workflowDetails.workflowType) {
         let workflowHandler = workflowDetails.workflowType.getHandler();
 
         // First transform using this workflow's output handler
+        // clone just in case user-provided output() mutates input
         if (workflowHandler && workflowHandler.output) {
-          outputEnv = workflowHandler.output(env).env;
+          outputEnv = workflowHandler.output(_.clone(decisionTaskEnv)).env;
         }
 
         // Then, if this was a sub-workflow, transform using the parent workflow
         // task entry for this child workflow execution
         if (parentWorkflowDetails && parentWorkflowDetails.taskDefObj.output) {
-          outputEnv = parentWorkflowDetails.taskDefObj.output(outputEnv).env;
+          outputEnv = parentWorkflowDetails.taskDefObj.output(outputEnv || _.clone(decisionTaskEnv)).env;
         }
       }
 
       if (workflowDetails) {
-        filteredCompleteWorkflow.bind(decisionTask)({status: 'success'}, null, outputEnv);
+        filteredCompleteWorkflow.bind(decisionTask)({status: 'success'}, null, (outputEnv || decisionTaskEnv));
       } else {
         decisionTask.completeWorkflow({status: 'success'});
       }

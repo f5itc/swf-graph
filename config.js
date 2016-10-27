@@ -19,7 +19,8 @@ var config = {
     awsAccountId: '548238529753'
   },
   logger:     {
-    name: 'ftl-engine'
+    name: 'ftl-engine',
+    devMode: true
   },
   swf:        {
     domainName:   process.env.SWF_DOMAIN || 'DCF5',
