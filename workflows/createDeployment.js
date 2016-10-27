@@ -17,7 +17,7 @@ module.exports = {
       createDeploymentDoc: {
         activity: 'createDeploymentDoc',
         input:    (env) => ({}),
-        output:   (env) => ({ theId: env.id, newValueThatIWant: env.newValueThatIWant})
+        output:   (env) => ({ theId: env.id, newValueThatIWant: env.newValueThatIWant })
       },
 
       startNewDeployment: {
@@ -33,8 +33,13 @@ module.exports = {
 
           return { theValue: env.newValueThatIWant };
         },
+        output:    (env) => {
+          env.BLAMMO = 'mrow0';
+          return { env };
+        },
         workflow:  'doSomething'
       },
+
 
       setDeploymentStateCreated: {
         dependsOn: ['startNewDeployment'],
