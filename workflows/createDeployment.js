@@ -29,8 +29,6 @@ module.exports = {
       doSomethingWithDeployment: {
         dependsOn: ['startNewDeployment'],
         input:     (env) => {
-          console.log("ENV IS:", env);
-
           return { theValue: env.newValueThatIWant };
         },
         output:    (env) => {

@@ -12,8 +12,7 @@ var setDeploymentDocState = {
   }).required(),
 
   execute: function(params) {
-    console.log('setDeploymentDocState execute()', arguments);
-    this.logger.info(`setDeploymentDocState ran ${params}`);
+    this.logger.info(`setDeploymentDocState ran`, { params: params });
 
     return bluebird.resolve(Math.round(Math.random() * 100).toString()).delay(5000).return(params.state);
   },

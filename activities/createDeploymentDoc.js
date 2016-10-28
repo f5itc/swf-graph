@@ -11,8 +11,7 @@ var createDeploymentDoc = {
   }),
 
   execute: function(params) {
-    console.log('createDeploymentDoc execute()', arguments);
-    this.logger.info(`createDeploymentDoc ran ${params}`);
+    this.logger.info(`createDeploymentDoc ran`, { params: params });
 
     return bluebird.resolve(Math.round(Math.random() * 100).toString()).delay(2500);
   },
