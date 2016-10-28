@@ -103,10 +103,10 @@ export class BaseActivity extends SWFActivity {
         activityInput = env;
       }
 
-      this.activity.run(activityInput, (err, status, env) => {
+      this.activity.run(activityInput, (err: Error, status, env) => {
         if (err) {
-          console.log('ERROR:', err);
-          console.log(err.stack);
+          this.config.logger.fatal('ERROR:', {err});
+          this.config.logger.fatal(err.stack || '');
           return cb(err, {status: 'failure'});
         }
         let info: any = null;
@@ -123,8 +123,15 @@ export class BaseActivity extends SWFActivity {
         if (isWorkflowTask && thisActivityDefObj && thisActivityDefObj.output) {
           let outputValue = thisActivityDefObj.output(env);
 
-          console.log('--> ACTIVITY ' + workflowName + '->' + input.name +
-                      ' env is:\n', env, '\n--> OUTPUT IS: ', outputValue);
+          if (!outputValue) {
+            this.config.logger.fatal('ERROR: Output returned no value in ' + input.workflow.name + ' for ' + input.name);
+            return cb(new Error('ERROR: Output returned no value in ' + input.workflow.name + ' for ' + input.name), {status: 'failure'});
+          }
+
+          this.config.logger.info(input.currentPath.join('->'), {
+            preOutput: env,
+            output: outputValue
+          });
           env = outputValue;
         }
 

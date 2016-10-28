@@ -55,7 +55,9 @@ export class ActivityRegistry extends Registry<ActivityType> {
         const {error, value} = Joi.validate(params, activityDefObj.schema);
 
         if (error) {
-          console.log('Error validating params: ', params, error);
+          this.logger.fatal(`Error on activity worker: ${name} params: `, {
+            error, params
+          });
           cb(new Error(`Error validating ${name} params : ` + error));
         }
 
