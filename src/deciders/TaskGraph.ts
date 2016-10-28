@@ -95,96 +95,6 @@ export interface NodeDetails {
   state: string;
 }
 
-export interface HasBuildFilteredTaskInput {
-  filteredBuildInitialControlDoc?(maxRetry: number);
-  filteredBuildTaskInput?(input: any, filterFunc?: {(env: any): any});
-  filteredCompleteWorkflow(result: TaskStatus, opts: ConfigOverride, filterFunc?: {(env: any): any});
-  filteredScheduleTask(activityId: string, input: any, activity: ActivityType, opts: ConfigOverride, filterFunc?: {(env: any): any});
-  filteredStartChildWorkflow(workflowId: string, input: any, opts: ConfigOverride, filterFunc?: {(env: any): any});
-}
-
-// TODO: un-hackify this.
-const SWF_MAX_RETRY = 5;
-// Override methods that use buildTaskInput.
-
-function filteredBuildInitialControlDoc(maxRetry: number = SWF_MAX_RETRY) {
-  return {executionCount: 1, maxRetry};
-};
-
-function filteredBuildTaskInput(input: any, inputEnv: any) {
-  return JSON.stringify({
-    input: input,
-    env: inputEnv,
-    originWorkflow: this.getOriginWorkflow()
-  } as TaskInput);
-};
-
-function filteredScheduleTask(activityId: string,
-                              input: any,
-                              activity: ActivityType,
-                              opts: ConfigOverride,
-                              inputEnv: any) {
-  let maxRetry = opts['maxRetry'] as number || activity.maxRetry;
-  let taskInput = filteredBuildTaskInput.bind(this)(input, inputEnv);
-
-  this.decisions.push({
-    entities: ['activity'],
-    overrides: opts,
-    decision: {
-      decisionType: 'ScheduleActivityTask',
-      scheduleActivityTaskDecisionAttributes: {
-        input: taskInput,
-        activityId: activityId,
-        activityType: {
-          name: activity.name,
-          version: activity.version
-        },
-        control: JSON.stringify(filteredBuildInitialControlDoc.bind(this)(maxRetry))
-      }
-    }
-  });
-};
-
-function filteredStartChildWorkflow(workflowId: string,
-                                    input: any,
-                                    opts: ConfigOverride = {},
-                                    inputEnv: any) {
-  let maxRetry = opts['maxRetry'] as number;
-  this.decisions.push({
-    entities: ['workflow', 'decision'],
-    overrides: opts,
-    decision: {
-      decisionType: 'StartChildWorkflowExecution',
-      startChildWorkflowExecutionDecisionAttributes: {
-        workflowId: workflowId,
-        workflowType: {
-          name: this.workflow.name,
-          version: this.workflow.version
-        },
-        input: filteredBuildTaskInput.bind(this)(input, inputEnv),
-        control: JSON.stringify(filteredBuildInitialControlDoc.bind(this)(maxRetry))
-      }
-    }
-  });
-};
-
-function filteredCompleteWorkflow(result: TaskStatus,
-                                  opts: ConfigOverride = {},
-                                  outputEnv: any) {
-
-  result.env = outputEnv;
-  this.decisions.push({
-    entities: ['workflow'],
-    overrides: opts,
-    decision: {
-      decisionType: 'CompleteWorkflowExecution',
-      completeWorkflowExecutionDecisionAttributes: {
-        result: JSON.stringify(result)
-      }
-    }
-  });
-};
-
 export default class TaskGraph extends BaseDecider {
   maxRunningWorkflow: number;
 
@@ -361,11 +271,7 @@ export default class TaskGraph extends BaseDecider {
             startCountSubWorkflows++;
             const maxRetry = tgNode.maxRetry || this.FTLConfig.getOpt('maxRetry');
 
-            if (workflowDetails) {
-              filteredStartChildWorkflow.bind(decisionTask)(tgNode.id, tgNode, {maxRetry: maxRetry}, inputEnv);
-            } else {
-              decisionTask.startChildWorkflow(tgNode.id, tgNode, {maxRetry: maxRetry});
-            }
+            decisionTask.startChildWorkflow(tgNode.id, tgNode, {maxRetry: maxRetry}, inputEnv);
           }
         }
         else if (node.handler === 'recordMarker') {
@@ -390,11 +296,7 @@ export default class TaskGraph extends BaseDecider {
           let opts = this.buildOpts(node);
           opts['maxRetry'] = node.maxRetry || handlerActType.getMaxRetry() || this.FTLConfig.getOpt('maxRetry');
 
-          if (workflowDetails) {
-            filteredScheduleTask.bind(decisionTask)(node.id, node, handlerActType, opts, inputEnv);
-          } else {
-            decisionTask.scheduleTask(node.id, node, handlerActType, opts);
-          }
+          decisionTask.scheduleTask(node.id, node, handlerActType, opts, inputEnv);
         }
       }
     }
@@ -444,11 +346,7 @@ export default class TaskGraph extends BaseDecider {
         }
       }
 
-      if (workflowDetails) {
-        filteredCompleteWorkflow.bind(decisionTask)({status: 'success'}, null, (outputEnv || decisionTaskEnv));
-      } else {
-        decisionTask.completeWorkflow({status: 'success'});
-      }
+      decisionTask.completeWorkflow({status: 'success'}, {}, outputEnv);
     }
 
     if (cb) { return cb(); }
