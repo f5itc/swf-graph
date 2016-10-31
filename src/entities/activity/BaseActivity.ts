@@ -121,7 +121,7 @@ export class BaseActivity extends SWFActivity {
 
         // If workflow task node defines its own output(), run env through it
         if (isWorkflowTask && thisActivityDefObj && thisActivityDefObj.output) {
-          let outputValue = thisActivityDefObj.output(env);
+          let outputValue = thisActivityDefObj.output(env).env;
 
           if (!outputValue) {
             this.config.logger.fatal('ERROR: Output returned no value in ' + input.workflow.name + ' for ' + input.name);
