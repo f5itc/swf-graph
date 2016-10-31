@@ -1,6 +1,6 @@
 {
   "name": "swf-graph",
-  "version": "0.0.24",
+  "version": "0.0.25",
   "description": "A scalable, fault-tolerant distributed task runner for complex workflows",
   "main": "index.js",
   "scripts": {
