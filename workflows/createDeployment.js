@@ -17,12 +17,16 @@ module.exports = {
       createDeploymentDoc: {
         activity: 'createDeploymentDoc',
         input:    (env) => ({}),
-        output:   (env) => ({ theId: env.id, newValueThatIWant: env.newValueThatIWant })
+        output:   (env) => {
+          return { env: { theId: env.id, newValueThatIWant: env.newValueThatIWant } };
+        }
       },
 
       startNewDeployment: {
         dependsOn: ['createDeploymentDoc'],
-        input:     (env) => ({ deploymentId: env.theId }),
+        input:     (env) => {
+          return { deploymentId: env.theId };
+        },
         workflow:  'startDeployment'
       },
 
