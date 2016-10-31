@@ -327,7 +327,7 @@ export default class TaskGraph extends BaseDecider {
 
     } else if (next.finished) {
       // TODO: better results
-      let outputEnv;
+      let outputEnv = _.clone(decisionTaskEnv);
 
       // If there is an output func defined on the parent workflow use it to filter env
       if (workflowDetails && workflowDetails.workflowType) {
@@ -336,16 +336,31 @@ export default class TaskGraph extends BaseDecider {
         // First transform using this workflow's output handler
         // clone just in case user-provided output() mutates input
         if (workflowHandler && workflowHandler.output) {
-          outputEnv = workflowHandler.output(_.clone(decisionTaskEnv)).env;
+          let postOutputEnv = workflowHandler.output(outputEnv).env;
+
+          this.logger.info(workflowDetails.name + ' Running output filter from local workflow', {
+            preOutput: outputEnv,
+            output: postOutputEnv
+          });
+
+          outputEnv = postOutputEnv;
         }
 
         // Then, if this was a sub-workflow, transform using the parent workflow
         // task entry for this child workflow execution
         if (parentWorkflowDetails && parentWorkflowDetails.taskDefObj.output) {
-          outputEnv = parentWorkflowDetails.taskDefObj.output(outputEnv || _.clone(decisionTaskEnv)).env;
+          let postOutputEnv = parentWorkflowDetails.taskDefObj.output(outputEnv).env;
+
+          this.logger.info(workflowDetails.name + ' Running output filter from parent workflow', {
+            preOutput: outputEnv,
+            output: postOutputEnv
+          });
+
+          outputEnv = postOutputEnv;
         }
       }
 
+      this.logger.info('Final event list is:', groupedEvents);
       decisionTask.completeWorkflow({status: 'success'}, {}, outputEnv);
     }
 
