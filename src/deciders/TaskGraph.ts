@@ -360,7 +360,7 @@ export default class TaskGraph extends BaseDecider {
         }
       }
 
-      this.logger.info('Final event list is:', groupedEvents);
+      // this.logger.info('Final event list is:', groupedEvents);
       decisionTask.completeWorkflow({status: 'success'}, {}, outputEnv);
     }
 
