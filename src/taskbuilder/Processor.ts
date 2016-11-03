@@ -96,8 +96,15 @@ export class Processor implements IProcessor {
         taskKey: nodeName
       };
 
+      // If maxRetry set on this node, mutate opts passed to subProcessor accordingly
+      let subOpts = _.clone(this.opts);
+
+      if (node.maxRetry) {
+        subOpts.maxRetry = node.maxRetry;
+      }
+
       let subProcessor = new Processor(this.config, TargetWorkflow.getHandler(),
-        parentWorkflow, this.getCurrentPath(), this.opts);
+        parentWorkflow, this.getCurrentPath(), subOpts);
 
       subProcessor.process(args, nodeName, (err, taskGraph) => {
         let newNode;
@@ -221,7 +228,7 @@ export class Processor implements IProcessor {
       type: 'activity',
       name: name,
       deps: newNode.dependsOn || [],
-      maxRetry: newNode.maxRetry || this.getMaxRetry(),
+      maxRetry: newNode.maxRetry || this.config.getOpt('maxRetry'),
       currentPath: path,
       parameters: newNode.parameters || {},
       workflow: {name: this.getWorkflowName()}

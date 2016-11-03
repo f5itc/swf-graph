@@ -22,7 +22,9 @@ var setDeploymentDocState = {
       status: { setDeploymentDocState: 'completed' },
       env:    { deploymentState: result }
     };
-  }
+  },
+
+  maxRetry: 3
 };
 
 module.exports = setDeploymentDocState;
