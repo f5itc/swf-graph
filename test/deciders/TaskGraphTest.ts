@@ -1,5 +1,6 @@
 import { assert } from 'chai';
 import * as shortId from 'shortid';
+import * as _ from 'lodash';
 
 import { Workflow } from 'simple-swf/build/src/entities';
 import {
@@ -39,7 +40,7 @@ function buildBaseMock(sandbox: SinonHelper, getModuleFunc?: getModuleStub): {wf
 }
 
 // little method to help build up mock input and
-function buildNextMock(nodes, sandbox: SinonHelper, getModuleFunc?: getModuleStub): {tg: TaskGraph, dt: DecisionTask, input: TaskGraphParameters} {
+function buildNextMock(input: {nodes: any, events?: EventData}, sandbox: SinonHelper, getModuleFunc?: getModuleStub): {tg: TaskGraph, dt: DecisionTask, input: TaskGraphParameters} {
   let grouped = {
     activity: {},
     workflow: {},
@@ -51,9 +52,15 @@ function buildNextMock(nodes, sandbox: SinonHelper, getModuleFunc?: getModuleStu
   let graph = {
     nodes: {},
     edges: {},
+    revEdges: {},
     sourceNode: '',
     sinkNode: ''
   } as TaskGraphGraph;
+
+  let {nodes, events} = input;
+
+  // Extend grouped with passed in events if provided
+  if (events) { _.merge(grouped, events); }
 
   for (let node of nodes) {
     node.handler = node.handler || 'mock';
@@ -94,6 +101,13 @@ function buildNextMock(nodes, sandbox: SinonHelper, getModuleFunc?: getModuleStu
       };
     }
     graph.edges[node.id] = node.deps.map((d) => d + '');
+
+    // Generate reverse edges for revert paths
+    graph.revEdges[node.id] = graph.revEdges[node.id] || [];
+    node.deps.forEach((idDep) => {
+      graph.revEdges![idDep] = graph.revEdges![idDep] || [];
+      graph.revEdges![idDep].push(node.id);
+    });
   }
 
   if (!graph.sinkNode || !graph.sourceNode) {
@@ -287,7 +301,7 @@ describe('taskGraph', () => {
         }
       ];
 
-      let {dt, input, tg} = buildNextMock(nodes, newContext());
+      let {dt, input, tg} = buildNextMock({nodes}, newContext());
       let nextNodes = tg.getNextNodes(input.graph, dt.getGroupedEvents());
 
       it('should schedule only the node that is ready', () => {
@@ -323,7 +337,7 @@ describe('taskGraph', () => {
         }
       ];
 
-      let {dt, input, tg} = buildNextMock(nodes, newContext());
+      let {dt, input, tg} = buildNextMock({nodes}, newContext());
       let nextNodes = tg.getNextNodes(input.graph, dt.getGroupedEvents());
 
       it('should schedule multiple children that are ready', () => {
@@ -366,7 +380,7 @@ describe('taskGraph', () => {
           }
         ];
 
-        let {dt, input, tg} = buildNextMock(nodes, newContext());
+        let {dt, input, tg} = buildNextMock({nodes}, newContext());
         let nextNodes = tg.getNextNodes(input.graph, dt.getGroupedEvents());
 
         assert.equal(nextNodes.nodes.length, 1);
@@ -401,7 +415,7 @@ describe('taskGraph', () => {
           }
         ];
 
-        let {dt, input, tg} = buildNextMock(nodes, newContext());
+        let {dt, input, tg} = buildNextMock({nodes}, newContext());
         let nextNodes = tg.getNextNodes(input.graph, dt.getGroupedEvents());
 
         assert.equal(nextNodes.nodes.length, 1);
@@ -441,7 +455,7 @@ describe('taskGraph', () => {
           }
         ];
 
-        let {dt, input, tg} = buildNextMock(nodes, newContext());
+        let {dt, input, tg} = buildNextMock({nodes}, newContext());
         let nextNodes = tg.getNextNodes(input.graph, dt.getGroupedEvents());
 
         assert.equal(nextNodes.nodes.length, 3);
@@ -482,7 +496,7 @@ describe('taskGraph', () => {
           }
         ];
 
-        let {dt, input, tg} = buildNextMock(nodes, newContext());
+        let {dt, input, tg} = buildNextMock({nodes}, newContext());
         let nextNodes = tg.getNextNodes(input.graph, dt.getGroupedEvents());
 
         assert.equal(nextNodes.nodes.length, 2);
@@ -525,7 +539,7 @@ describe('taskGraph', () => {
           }
         ];
 
-        let {dt, input, tg} = buildNextMock(nodes, newContext());
+        let {dt, input, tg} = buildNextMock({nodes}, newContext());
         let nextNodes = tg.getNextNodes(input.graph, dt.getGroupedEvents());
 
         assert.equal(nextNodes.finished, true);
@@ -567,7 +581,7 @@ describe('taskGraph', () => {
           }
         ];
 
-        let {dt, input, tg} = buildNextMock(nodes, newContext());
+        let {dt, input, tg} = buildNextMock({nodes}, newContext());
         let nextNodes = tg.getNextNodes(input.graph, dt.getGroupedEvents());
 
         assert.equal(nextNodes.finished, true);
@@ -604,7 +618,7 @@ describe('taskGraph', () => {
           }
         ];
 
-        let {dt, input, tg} = buildNextMock(nodes, newContext());
+        let {dt, input, tg} = buildNextMock({nodes}, newContext());
         let nextNodes = tg.getNextNodes(input.graph, dt.getGroupedEvents());
 
         assert.equal(nextNodes.nodes.length, 0);
@@ -641,7 +655,7 @@ describe('taskGraph', () => {
           }
         ];
 
-        let {dt, input, tg} = buildNextMock(nodes, newContext());
+        let {dt, input, tg} = buildNextMock({nodes}, newContext());
         let nextNodes = tg.getNextNodes(input.graph, dt.getGroupedEvents());
 
         assert.equal(nextNodes.nodes.length, 1);
@@ -701,13 +715,13 @@ describe('taskGraph', () => {
       }
     ];
 
-    let {dt, input, tg} = buildNextMock(nodes, newContext());
+    let {dt, input, tg} = buildNextMock({nodes}, newContext());
     let nextNodes = tg.getNextNodes(input.graph, dt.getGroupedEvents());
     let graph = input.graph;
     let grouped = dt.getGroupedEvents();
 
     it('should handle a normal node that is finished', () => {
-      let res = tg.getNodeDetails(graph, grouped, '1');
+      let res = tg.getNodeDetails(graph, grouped, false, '1');
       assert.equal(res.state, 'completed');
       assert.equal(res.type, 'activity');
       assert.equal(res.id, '1');
@@ -715,7 +729,7 @@ describe('taskGraph', () => {
     });
 
     it('should handle a normal node that has a specific state', () => {
-      let res = tg.getNodeDetails(graph, grouped, '2');
+      let res = tg.getNodeDetails(graph, grouped, false, '2');
       assert.equal(res.state, 'started');
       assert.equal(res.type, 'activity');
       assert.equal(res.id, '2');
@@ -723,7 +737,7 @@ describe('taskGraph', () => {
     });
 
     it('should handle a normal node that has not started', () => {
-      let res = tg.getNodeDetails(graph, grouped, '3');
+      let res = tg.getNodeDetails(graph, grouped, false, '3');
       assert.equal(res.state, 'waiting');
       assert.equal(res.type, 'activity');
       assert.equal(res.id, '3');
@@ -731,7 +745,7 @@ describe('taskGraph', () => {
     });
 
     it('should handle a decision node that has finished', () => {
-      let res = tg.getNodeDetails(graph, grouped, '4');
+      let res = tg.getNodeDetails(graph, grouped, false, '4');
       assert.equal(res.state, 'completed');
       assert.equal(res.type, 'workflow');
       assert.equal(res.id, '4');
@@ -739,7 +753,7 @@ describe('taskGraph', () => {
     });
 
     it('should handle a decision node that has not finished', () => {
-      let res = tg.getNodeDetails(graph, grouped, '5');
+      let res = tg.getNodeDetails(graph, grouped, false, '5');
       assert.equal(res.state, 'waiting');
       assert.equal(res.type, 'workflow');
       assert.equal(res.id, '5');
@@ -747,7 +761,7 @@ describe('taskGraph', () => {
     });
 
     it('should handle a add marker node that has finished', () => {
-      let res = tg.getNodeDetails(graph, grouped, '6');
+      let res = tg.getNodeDetails(graph, grouped, false, '6');
       assert.equal(res.state, 'completed');
       assert.equal(res.type, 'marker');
       assert.equal(res.id, '6');
@@ -755,7 +769,7 @@ describe('taskGraph', () => {
     });
 
     it('should handle a add marker node that has not finished', () => {
-      let res = tg.getNodeDetails(graph, grouped, '7');
+      let res = tg.getNodeDetails(graph, grouped, false, '7');
       assert.equal(res.state, 'collapse');
       assert.equal(res.type, 'marker');
       assert.equal(res.id, '7');
@@ -837,7 +851,7 @@ describe('taskGraph', () => {
       return noLimit;
     }
 
-    let {dt, input, tg} = buildNextMock(nodes, sandbox, multiModule);
+    let {dt, input, tg} = buildNextMock({nodes}, sandbox, multiModule);
     let graph = input.graph;
     let grouped = dt.getGroupedEvents();
 
@@ -897,7 +911,7 @@ describe('taskGraph', () => {
       }
     ];
 
-    let {dt, input, tg} = buildNextMock(nodes, newContext());
+    let {dt, input, tg} = buildNextMock({nodes}, newContext());
     let graph = input.graph;
     let grouped = dt.getGroupedEvents();
 
@@ -912,6 +926,322 @@ describe('taskGraph', () => {
         }
       }
       assert.equal(startCount, 2);
+    });
+  });
+
+  describe('#getLastNodes()', () => {
+    describe('simple linear reversion', () => {
+      let nodes = [
+        {
+          id: 1,
+          source: true,
+          done: true
+        },
+        {
+          id: 2,
+          deps: [1]
+        },
+        {
+          id: 3,
+          deps: [2],
+          sink: true
+        }
+      ];
+
+      let {dt, input, tg} = buildNextMock({nodes}, newContext());
+      let lastNodes = tg.getLastNodes(input.graph, dt.getGroupedEvents());
+
+      it('should schedule a revert for only the node that was completed', () => {
+        assert.equal(lastNodes.nodes.length, 1);
+        assert.equal(lastNodes.nodes[0].handler, 'mock');
+        assert.equal(lastNodes.nodes[0].id, 1);
+      });
+    });
+
+    describe('multiple dependent parents', () => {
+      let nodes = [
+        {
+          id: 1,
+          source: true,
+          done: true
+        },
+        {
+          id: 2,
+          deps: [1],
+          done: true
+        },
+        {
+          id: 3,
+          deps: [1],
+          done: true
+        },
+        {
+          id: 4,
+          deps: [1],
+          done: true
+        },
+        {
+          id: 5,
+          deps: [2, 3, 4],
+          sink: true
+        }
+      ];
+
+      let {dt, input, tg} = buildNextMock({nodes}, newContext());
+      let lastNodes = tg.getLastNodes(input.graph, dt.getGroupedEvents());
+
+      it('should revert all parents of the un-completed node that were completed', () => {
+        assert.equal(lastNodes.nodes.length, 3);
+        assert.equal(lastNodes.nodes[0].handler, 'mock');
+        assert.equal(lastNodes.nodes[1].handler, 'mock');
+        assert.equal(lastNodes.nodes[2].handler, 'mock');
+        assert.equal(lastNodes.nodes[0].id, 2);
+        assert.equal(lastNodes.nodes[1].id, 3);
+        assert.equal(lastNodes.nodes[2].id, 4);
+      });
+    });
+
+    describe('depend on multiple children', () => {
+      it('should revert if both children are ready', () => {
+        let nodes = [
+          {
+            id: 1,
+            source: true,
+            done: true
+          },
+          {
+            id: 2,
+            deps: [1],
+            done: true
+          },
+          {
+            id: 3,
+            deps: [1],
+            done: true
+          },
+          {
+            id: 4,
+            deps: [2, 3]
+          },
+          {
+            id: 5,
+            deps: [4],
+            sink: true
+          }
+        ];
+
+        let {dt, input, tg} = buildNextMock({nodes}, newContext());
+        let lastNodes = tg.getLastNodes(input.graph, dt.getGroupedEvents());
+
+        assert.equal(lastNodes.nodes.length, 2);
+        assert.equal(lastNodes.nodes[0].handler, 'mock');
+        assert.equal(lastNodes.nodes[0].id, 2);
+        assert.equal(lastNodes.nodes[1].handler, 'mock');
+        assert.equal(lastNodes.nodes[1].id, 3);
+      });
+
+      it('should only revert one child if only one is ready ', () => {
+        let nodes = [
+          {
+            id: 1,
+            source: true,
+            done: true
+          },
+          {
+            id: 2,
+            deps: [1],
+            done: true
+          },
+          {
+            id: 3,
+            deps: [1]
+          },
+          {
+            id: 4,
+            deps: [2, 3]
+          },
+          {
+            id: 5,
+            deps: [4],
+            sink: true
+          }
+        ];
+
+        let {dt, input, tg} = buildNextMock({nodes}, newContext());
+        let lastNodes = tg.getLastNodes(input.graph, dt.getGroupedEvents());
+
+        assert.equal(lastNodes.nodes.length, 1);
+        assert.equal(lastNodes.nodes[0].handler, 'mock');
+        assert.equal(lastNodes.nodes[0].id, 2);
+      });
+
+      describe('revert tasks are tracked', () => {
+        it('should not return a node that is already being reverted', () => {
+          let nodes = [
+            {
+              id: 1,
+              source: true,
+              done: true
+            },
+            {
+              id: 2,
+              deps: [1],
+              done: true
+            },
+            {
+              id: 3,
+              deps: [1],
+              done: true
+            },
+            {
+              id: 4,
+              deps: [2, 3]
+            },
+            {
+              id: 5,
+              deps: [4],
+              sink: true
+            }
+          ];
+
+
+          let events = {
+            activity: {
+              '3_revert': {
+                id: '3_revert',
+                current: 'scheduled',
+                'scheduled': {
+                  mock: {}
+                }
+              }
+            }
+          } as EventData;
+
+          let {dt, input, tg} = buildNextMock({nodes, events}, newContext());
+          let lastNodes = tg.getLastNodes(input.graph, dt.getGroupedEvents());
+
+          assert.equal(lastNodes.nodes.length, 1);
+          assert.equal(lastNodes.nodes[0].handler, 'mock');
+          assert.equal(lastNodes.nodes[0].id, 2);
+        });
+      });
+
+      /*describe('first decision', () => {
+       it('should add recordMarker and first activities', () => {
+       let nodes = [
+       {
+       id: 1,
+       source: true,
+       type: 'decision',
+       handler: 'recordMarker',
+       parameters: {
+       status: 'stuff'
+       }
+       },
+       {
+       id: 2,
+       deps: [1]
+       },
+       {
+       id: 3,
+       deps: [1]
+       },
+       {
+       id: 4,
+       deps: [2, 3]
+       },
+       {
+       id: 5,
+       deps: [4],
+       sink: true
+       }
+       ];
+
+       let {dt, input, tg} = buildNextMock({nodes}, newContext());
+       let nextNodes = tg.getNextNodes(input.graph, dt.getGroupedEvents());
+
+       assert.equal(nextNodes.nodes.length, 3);
+       assert.equal(nextNodes.nodes[0].handler, 'recordMarker');
+       assert.equal(nextNodes.nodes[0].id, 1);
+       assert.equal(nextNodes.nodes[1].handler, 'mock');
+       assert.equal(nextNodes.nodes[1].id, 2);
+       assert.equal(nextNodes.nodes[2].handler, 'mock');
+       assert.equal(nextNodes.nodes[2].id, 3);
+       });*/
+    });
+
+    describe('nothing to schedule', () => {
+      it('should not be able to schedule if tasks are running or scheduled', () => {
+        let nodes = [
+          {
+            id: 1,
+            source: true,
+            done: true
+          },
+          {
+            id: 2,
+            deps: [1],
+            state: 'scheduled'
+          },
+          {
+            id: 3,
+            deps: [1],
+            state: 'started'
+          },
+          {
+            id: 4,
+            deps: [2, 3]
+          },
+          {
+            id: 5,
+            deps: [4],
+            sink: true
+          }
+        ];
+
+        let {dt, input, tg} = buildNextMock({nodes}, newContext());
+        let nextNodes = tg.getNextNodes(input.graph, dt.getGroupedEvents());
+
+        assert.equal(nextNodes.nodes.length, 0);
+      });
+    });
+
+    describe('child workflows', () => {
+      it('should be able to schedule child workflows', () => {
+        let nodes = [
+          {
+            id: 1,
+            source: true,
+            done: true
+          },
+          {
+            id: 2,
+            deps: [1],
+            type: 'decision',
+            handler: 'taskGraph'
+          },
+          {
+            id: 3,
+            deps: [1],
+            done: true
+          },
+          {
+            id: 4,
+            deps: [2, 3]
+          },
+          {
+            id: 5,
+            deps: [4],
+            sink: true
+          }
+        ];
+
+        let {dt, input, tg} = buildNextMock({nodes}, newContext());
+        let nextNodes = tg.getNextNodes(input.graph, dt.getGroupedEvents());
+
+        assert.equal(nextNodes.nodes.length, 1);
+        assert.equal(nextNodes.nodes[0].handler, 'taskGraph');
+      });
     });
   });
 });

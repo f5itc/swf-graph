@@ -13,6 +13,22 @@ import { Config } from '../Config';
 import { TaskStatus, TaskInput } from 'simple-swf/build/src/interfaces';
 import { WorkflowType } from '../entities/workflow/WorkflowType';
 
+import { states as eventStates } from 'simple-swf/build/src/tasks/processEvents';
+
+export const pendingStates = [
+  eventStates.SCH,
+  eventStates.ST,
+  eventStates.TC,
+  eventStates.CAL];
+
+export const revertableStates = [
+  eventStates.FA,
+  eventStates.CO,
+  eventStates.TO,
+  eventStates.TE,
+  eventStates.CF
+];
+
 export interface WorkflowDetails {
   name: string;
   tasks?: any;
@@ -56,7 +72,7 @@ export interface TaskGraphGraph {
   edges: {
     [name: string]: string[]
   };
-  revEdges?: {
+  revEdges: {
     [name: string]: string[]
   };
   sourceNode: string;
@@ -316,12 +332,15 @@ export default class TaskGraph extends BaseDecider {
       if (groupedEvents && groupedEvents.marker && groupedEvents.marker['TaskFailed']) {
         // TODO: Handle taskFailed logic
         this.logger.info('DETECTED TASKFAILED ON: ' + failedToReschedule[0] + ' Processing revert, then failing workflow.');
+
         decisionTask.failWorkflow('failed to reschedule previously failed events', JSON.stringify(failedToReschedule).slice(0, 250));
       } else {
         // TODO: If no pending tasks, schedule revert for those that failed.
         // TODO: Otherwise only add marker.
 
         decisionTask.addMarker('TaskFailed', {});
+        this.logger.info('Final event list is:', groupedEvents);
+
         decisionTask.failWorkflow('failed to reschedule previously failed events', JSON.stringify(failedToReschedule).slice(0, 250));
       }
 
@@ -360,7 +379,7 @@ export default class TaskGraph extends BaseDecider {
         }
       }
 
-      // this.logger.info('Final event list is:', groupedEvents);
+      this.logger.info('Final event list is:', groupedEvents);
       decisionTask.completeWorkflow({status: 'success'}, {}, outputEnv);
     }
 
@@ -424,7 +443,7 @@ export default class TaskGraph extends BaseDecider {
     const startingCount = startCountByHandler[node.handler] || 0;
     let curRunningOfType = 0;
     for (var nodeId in groupedEvents.activity) {
-      const curNode = this.getNodeDetails(graph, groupedEvents, nodeId);
+      const curNode = this.getNodeDetails(graph, groupedEvents, false, nodeId);
       if (curNode.state === 'started' && curNode.node.handler === node.handler) {
         curRunningOfType++;
       }
@@ -450,7 +469,7 @@ export default class TaskGraph extends BaseDecider {
     }
 
     for (let nodeId in groupedEvents.workflow) {
-      const curNode = this.getNodeDetails(graph, groupedEvents, nodeId);
+      const curNode = this.getNodeDetails(graph, groupedEvents, false, nodeId);
 
       if (curNode.state === 'started') {
         curRunningWorkflows++;
@@ -464,28 +483,39 @@ export default class TaskGraph extends BaseDecider {
     return false;
   }
 
-  getNodeDetails(graph: TaskGraphGraph, grouped: EventData, name: string): NodeDetails {
+  getNodeDetails(graph: TaskGraphGraph, grouped: EventData, reverse: boolean = false, name: string): NodeDetails {
     const node = graph.nodes[name];
     let type: string;
     let state: string;
 
     if (isTaskGraphGraphNode(node)) {
       type = 'workflow';
-      state = (grouped[type] && grouped[type][name]) ? grouped[type][name].current : 'waiting';
+      if (grouped[type] && grouped[type][name + '_revert']) {
+        if (_.indexOf(pendingStates, node.id) > -1) { state = 'reverting'; }
+        else { state = grouped[type][name + '_revert'].state; }
+      } else {
+        state = (grouped[type] && grouped[type][name]) ? grouped[type][name].current : 'waiting';
+      }
     } else if (isTaskGraphMarkerNode(node)) {
       type = 'marker';
       state = (grouped[type] && grouped[type][name]) ? grouped[type][name].current : 'collapse';
     } else {
       type = node.type || 'activity';
-      state = (grouped[type] && grouped[type][name]) ? grouped[type][name].current : 'waiting';
+      if (grouped[type] && grouped[type][name + '_revert']) {
+        if (_.indexOf(pendingStates, node.id) > -1) { state = 'reverting'; }
+        else { state = grouped[type][name + '_revert'].state; }
+      }
+      else {
+        state = (grouped[type] && grouped[type][name]) ? grouped[type][name].current : 'waiting';
+      }
     }
 
-    const deps = graph.edges[name] || [];
+    const deps = (reverse === false ? graph.edges[name] : graph.revEdges[name]) || [];
     return {id: node.id, node, type: type, deps: deps, state: state};
   }
 
   getNextNodes(graph, grouped): {nodes: TaskGraphNode[], finished: boolean} {
-    const nodeDetails = this.getNodeDetails.bind(this, graph, grouped);
+    const nodeDetails = this.getNodeDetails.bind(this, graph, grouped, false);
     let node = nodeDetails(graph.sinkNode);
 
     if (node.state === 'completed') {
@@ -510,6 +540,44 @@ export default class TaskGraph extends BaseDecider {
           nodes[node.id] = node.node;
         }
       }
+      sources.push.apply(sources, node.deps);
+    }
+    return {nodes: _.values<TaskGraphNode>(nodes), finished: haveLastNode};
+  }
+
+  getLastNodes(graph, grouped): {nodes: TaskGraphNode[], finished: boolean} {
+    const nodeDetails = this.getNodeDetails.bind(this, graph, grouped, true);
+    let node = nodeDetails(graph.sourceNode);
+
+    // Nothing's been done!
+    if (node.state === 'collapse') {
+      return {nodes: [], finished: true};
+    }
+
+    let haveLastNode = false;
+    const sources = [graph.sourceNode];
+    const nodes: {[nodeId: string]: TaskGraphNode} = {};
+
+    while (sources.length) {
+      const next = sources.shift();
+      node = nodeDetails(next);
+
+      if (node.state === 'completed') {
+        // Deps here are nodes that are dependent on THIS node's completion
+        const depNodes = node.deps.map(nodeDetails);
+
+        const revertableDeps = depNodes.filter(function (n) {
+          return _.indexOf(revertableStates, n.state) > -1 && n.state !== 'collapse';
+        });
+
+        if (revertableDeps.length === 0) {
+          if (node.id === graph.sourceNode) {
+            haveLastNode = true;
+          }
+          nodes[node.id] = node.node;
+        }
+      }
+
       sources.push.apply(sources, node.deps);
     }
     return {nodes: _.values<TaskGraphNode>(nodes), finished: haveLastNode};
