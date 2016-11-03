@@ -56,7 +56,7 @@ export class TaskGraphBuilder {
 
   getGraph(): TaskGraphGraphNode {
     // get rid of rev edges
-    delete this.graph.revEdges;
+    // delete this.graph.revEdges;
     return {
       type: 'decision',
       handler: 'taskGraph',
