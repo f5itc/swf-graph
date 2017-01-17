@@ -167,7 +167,7 @@ export class Control {
         if (err) { return cb(err); }
 
         config.logger.info('Submitted workflow ' + info);
-        cb(info);
+        cb(null, info);
       });
   }
 }
