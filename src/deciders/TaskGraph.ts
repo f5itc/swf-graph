@@ -331,15 +331,15 @@ export default class TaskGraph extends BaseDecider {
       // TODO: 4. If revert activities also fail, fail workflow execution
       if (groupedEvents && groupedEvents.marker && groupedEvents.marker['TaskFailed']) {
         // TODO: Handle taskFailed logic
-        this.logger.info('DETECTED TASKFAILED ON: ' + failedToReschedule[0] + ' Processing revert, then failing workflow.');
+        // this.logger.info('DETECTED TASKFAILED ON: ' + failedToReschedule[0] + ' Processing revert, then failing workflow.');
 
-        decisionTask.failWorkflow('failed to reschedule previously failed events', JSON.stringify(failedToReschedule).slice(0, 250));
+        // decisionTask.failWorkflow('failed to reschedule previously failed events', JSON.stringify(failedToReschedule).slice(0, 250));
       } else {
         // TODO: If no pending tasks, schedule revert for those that failed.
         // TODO: Otherwise only add marker.
 
-        decisionTask.addMarker('TaskFailed', {});
-        this.logger.info('Final event list is:', groupedEvents);
+        // decisionTask.addMarker('TaskFailed', {});
+        // this.logger.info('Final event list is:', groupedEvents);
 
         decisionTask.failWorkflow('failed to reschedule previously failed events', JSON.stringify(failedToReschedule).slice(0, 250));
       }
@@ -379,7 +379,7 @@ export default class TaskGraph extends BaseDecider {
         }
       }
 
-      this.logger.info('Final event list is:', groupedEvents);
+      // this.logger.info('Final event list is:', groupedEvents);
       decisionTask.completeWorkflow({status: 'success'}, {}, outputEnv);
     }
 
