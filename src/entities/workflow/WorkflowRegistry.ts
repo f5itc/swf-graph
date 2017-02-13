@@ -12,7 +12,7 @@ const workflowSchema = Joi.object({
   schema: Joi.object().required(),
   version: Joi.string().min(3).required(),
   name: Joi.string()
-}).unknown(false).required();
+}).unknown(true).required();
 
 export class WorkflowRegistry extends Registry<WorkflowType> {
   wrapModule(filename: string, workflowDefObj: FTLWorkflowDef | any): WorkflowType {
