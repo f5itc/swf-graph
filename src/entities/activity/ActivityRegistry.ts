@@ -8,8 +8,8 @@ import { Registry } from '../Registry';
 import { Config } from '../../Config';
 
 const activitySchema = Joi.object({
-  execute: Joi.func().arity(1).required(),
-  output: Joi.func().arity(1).required(),
+  execute: Joi.func().maxArity(1).required(),
+  output: Joi.func().maxArity(1).required(),
   schema: Joi.object().required(),
   version: Joi.string().min(3).required(),
   getHandlerName: Joi.func()

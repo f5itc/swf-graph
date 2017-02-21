@@ -7,8 +7,8 @@ import { WorkflowType } from './WorkflowType';
 import { BaseWorkflow, FTLWorkflowDef } from './BaseWorkflow';
 
 const workflowSchema = Joi.object({
-  decider: Joi.func().arity(1).required(),
-  output: Joi.func().arity(1).required(),
+  decider: Joi.func().maxArity(1).required(),
+  output: Joi.func().maxArity(1).required(),
   schema: Joi.object().required(),
   version: Joi.string().min(3).required(),
   name: Joi.string()
