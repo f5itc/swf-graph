@@ -1,18 +1,17 @@
-import * as path from 'path';
-import * as async from 'async';
-import * as shortId from 'shortid';
 import * as Joi from 'joi';
+import * as async from 'async';
 
 import * as _ from 'lodash';
 
-import { Config } from '../Config';
-import { ActivityWorker, DeciderWorker } from '../workers';
-import { registration, InitedEntities } from '../init';
-import { validator } from '../lib/validator';
-import { Workflow } from 'simple-swf/build/src/entities';
+import {Config} from '../Config';
+import {ActivityWorker, DeciderWorker} from '../workers';
+import {registration, InitedEntities} from '../init';
+import {Workflow, ActivityType} from 'simple-swf/build/src/entities';
 
-import { Processor } from '../taskbuilder/';
-import { StringToStream } from './StringToStream';
+export interface ActivityTypeCreated {
+  activity: ActivityType;
+  created: boolean;
+}
 
 export class Control {
   config: Config;
@@ -109,6 +108,24 @@ export class Control {
     });
   }
 
+  registerActivityTypes(cb: {(err: Error | null, res?: ActivityTypeCreated[])}) {
+    let activities = _.values<ActivityType>(this.config.activities);
+
+    async.map(
+        activities,
+        (act, cb: {(err?: Error, s?: boolean)}) => act.ensureActivityType(this.workflow.domain, cb),
+        (err, results) => {
+          if (err) { return cb(err); }
+
+          const withCreated = activities.map((act, index) => ({
+            activity: act,
+            created: results[index] as boolean
+          }));
+
+          cb(null!, withCreated);
+        });
+  }
+
   startActivityWorker(shouldStart: boolean, cb: {(err: Error | null, s: boolean)}) {
     if (!shouldStart) {
       return cb(null, false);
@@ -116,13 +133,12 @@ export class Control {
     if (!this.activityWorker) {
       return cb(new Error('init not called'), false);
     }
-    this.activityWorker.start((err) => {
-      if (err) {
-        return cb(err, false);
-      }
-      this.config.logger.info('started activity worker');
-      cb(null, true);
-    });
+
+    // NOTE: using _start instead of start; avoids re-registering all activities on startup
+    this.activityWorker._start();
+
+    this.config.logger.info('started activity worker');
+    cb(null, true);
   }
 
   startDeciderWorker(shouldStart: boolean, cb: {(err: Error | null, s: boolean)}) {
