@@ -109,7 +109,7 @@ export class Control {
   }
 
   registerActivityTypes(cb: {(err: Error | null, res?: ActivityTypeCreated[])}) {
-    let activities = _.values<ActivityType>(this.config.activities);
+    const activities = this.config.activities.getModules();
 
     async.map(
         activities,
