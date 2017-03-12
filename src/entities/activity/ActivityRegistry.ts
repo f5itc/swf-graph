@@ -1,11 +1,10 @@
 import * as path from 'path';
 import * as Joi from 'joi';
 import * as bluebird from 'bluebird';
-
+import * as retry from 'bluebird-retry';
 import { ActivityType } from './ActivityType';
 import { FTLActivity, FTLRunCallback } from './BaseActivity';
 import { Registry } from '../Registry';
-import { Config } from '../../Config';
 
 const activitySchema = Joi.object({
   execute: Joi.func().maxArity(1).required(),
@@ -52,7 +51,7 @@ export class ActivityRegistry extends Registry<ActivityType> {
 
       run(params, cb) {
         // Ensure the provided object is correct shape (may default some props)
-        const {error, value} = Joi.validate(params, activityDefObj.schema);
+        const {error, value} = Joi.validate<{error?: Error, value: object}>(params, activityDefObj.schema);
 
         if (error) {
           this.logger.fatal(`Error on activity worker: ${name} params: `, {
@@ -61,16 +60,38 @@ export class ActivityRegistry extends Registry<ActivityType> {
           cb(new Error(`Error validating ${name} params : ` + error));
         }
 
-        return bluebird.try(() => ( activityDefObj.execute.bind(this)(value)))
-          .then(function (results) {
-            return bluebird.try(() => ( activityDefObj.output.bind(this)(results)))
+        let attemptNumber = 1;
+
+        function executeOnce(value: any) {
+          if (attemptNumber > 1) {
+            this.logger.info(`Retrying activity: ${name}, attempt #${attemptNumber}`,
+                {activityName: name, attemptNumber});
+          }
+
+          attemptNumber += 1;
+          return bluebird.try(() => ( activityDefObj.execute.bind(this)(value)));
+        };
+
+        // Ensure retryable errors retry execute method until they succeed
+        return retry(executeOnce, {
+          interval: 1000,
+          backoff: 2,
+          max_interval: 5 * (60 * 1000), // 5 minutes
+          max_tries: 100,
+          predicate: {retryable: true},
+          throw_original: true,
+          context: this,
+          args: [value, cb]
+        }).bind(this).then(function (results) {
+          return bluebird.try(() => ( activityDefObj.output.bind(this)(results)))
               .then(function (res) {
                 cb(null, res.status, res.env);
               });
-          }).catch(function (e) {
-            return cb(e);
-          });
+        }).catch(function (e) {
+              return cb(e);
+        });
       };
+
 
 
       status() { return activityDefObj.status ? activityDefObj.status() : ''; };
