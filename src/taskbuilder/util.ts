@@ -53,7 +53,7 @@ let genUtil = {
       }
       files = files.filter((f) => !noProcessRegex.test(f)).map((f) => path.join(dir, f));
       const dirFiles: DirState = {files: [], dirs: [], hasIndex: false};
-      async.reduce(files, dirFiles, genUtil.seperateDirFiles.bind(genUtil, validExts), (err, state) => {
+      async.reduce(files, dirFiles, genUtil.seperateDirFiles.bind(genUtil, validExts), (err: Error | null, state) => {
         if (err) {
           return cb(err, null);
         }

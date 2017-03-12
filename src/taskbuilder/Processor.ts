@@ -64,7 +64,7 @@ export class Processor implements IProcessor {
     const taskGraphObj = workflowDef.decider(args);
     const taskGraphKeys = Object.keys(taskGraphObj);
 
-    async.map<any, TaskGraphNode>(taskGraphKeys,
+    async.map<any, TaskGraphNode, any>(taskGraphKeys,
       this.processNode.bind(this, taskGraphObj, args), (err, tasks) => {
         if (err) { return cb(err, null); }
 

@@ -113,7 +113,7 @@ export class Control {
 
     async.map(
         activities,
-        (act, cb: {(err?: Error, s?: boolean)}) => act.ensureActivityType(this.workflow.domain, cb),
+        (act, cb: {(err: Error | null, s: boolean)}) => act.ensureActivityType(this.workflow.domain, cb),
         (err, results) => {
           if (err) { return cb(err); }
 

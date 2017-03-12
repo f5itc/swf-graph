@@ -407,7 +407,7 @@ export default class TaskGraph extends BaseDecider {
       targetSchema = handlerActType.ActivityHandler.getSchema();
     }
 
-    const {error, value} = Joi.validate(inputEnv, targetSchema);
+    const {error, value} = Joi.validate<{error?: Error, value: object}>(inputEnv, targetSchema);
 
     return {error, value};
   }
