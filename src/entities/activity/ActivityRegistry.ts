@@ -78,17 +78,17 @@ export class ActivityRegistry extends Registry<ActivityType> {
           backoff: 2,
           max_interval: 5 * (60 * 1000), // 5 minutes
           max_tries: 100,
-          predicate: {retryable: true},
+          predicate: (err) => err.retryable === true || err.statusCode >= 500,
           throw_original: true,
           context: this,
-          args: [value, cb]
+          args: [ value ]
         }).bind(this).then(function (results) {
           return bluebird.try(() => ( activityDefObj.output.bind(this)(results)))
               .then(function (res) {
                 cb(null, res.status, res.env);
               });
         }).catch(function (e) {
-              return cb(e);
+          return cb(e);
         });
       };
 
