@@ -64,7 +64,7 @@ export class BaseActivity extends SWFActivity {
     this.config = config;
   }
 
-  run(input: any, env: any, cb: {(err: Error | null, status: TaskStatus)}) {
+  run(input: any, env: any, initialEnv: any | null, cb: {(err: Error | null, status: TaskStatus)}) {
     this.activity = new this.activityClass(this.config);
     // input is activity descriptor node
 
@@ -83,7 +83,7 @@ export class BaseActivity extends SWFActivity {
       }
 
       const workflowHandler = workflowType.getHandler();
-      const activities = workflowHandler.decider(input.initialEnv);
+      const activities = workflowHandler.decider(initialEnv);
       thisActivityDefObj = activities[input.name];
       activityInput = env;
     }
