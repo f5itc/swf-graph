@@ -351,7 +351,7 @@ export default class TaskGraph extends BaseDecider {
 
       // Attempt to schedule workflows for any that failed to be scheduled
       workflow.map((event) => {
-        const workflowId = event.failedToSchedule.scheduleActivityTaskFailedEventAttributes.workflowId;
+        const workflowId = event.failedToSchedule.startChildWorkflowExecutionFailedEventAttributes.workflowId;
 
         const graphNode = graph.nodes[workflowId];
         const currentNodeTaskDefObj = workflowDetails.tasks[graphNode.name];
