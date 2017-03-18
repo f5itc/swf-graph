@@ -64,18 +64,6 @@ export class BaseActivity extends SWFActivity {
     this.config = config;
   }
 
-  getInitialWorkflowEnv(cb: {(err: Error | null, initialEnv?: any)}) {
-    let thisWorkflow = new WorkflowExecution(this.workflow, this.task.getWorkflowInfo());
-
-    thisWorkflow.getWorkflowExecutionHistory({}, (err, res) => {
-      if (err) { cb(err); }
-
-      if (res && res.wfInput && res.wfInput.env) {
-        cb(null, res.wfInput.env || {});
-      }
-    });
-  }
-
   run(input: any, env: any, cb: {(err: Error | null, status: TaskStatus)}) {
     this.activity = new this.activityClass(this.config);
     // input is activity descriptor node
@@ -84,59 +72,55 @@ export class BaseActivity extends SWFActivity {
     let thisActivityDefObj;
     let workflowName;
 
-    this.getInitialWorkflowEnv((err, initialEnv) => {
-      if (err) { cb(err, {status: 'failure'}); }
+    let isWorkflowTask = input.workflow;
+    if (isWorkflowTask) {
+      // Running as a workflow.
+      workflowName = input.workflow.name;
+      const workflowType = this.config.workflows.getModule(workflowName);
 
-      let isWorkflowTask = input.workflow;
-      if (isWorkflowTask) {
-        // Running as a workflow.
-        workflowName = input.workflow.name;
-        const workflowType = this.config.workflows.getModule(workflowName);
-
-        if (!workflowType) {
-          throw new Error('missing workflow type ' + workflowName);
-        }
-
-        const workflowHandler = workflowType.getHandler();
-        const activities = workflowHandler.decider(initialEnv);
-        thisActivityDefObj = activities[input.name];
-        activityInput = env;
+      if (!workflowType) {
+        throw new Error('missing workflow type ' + workflowName);
       }
 
-      this.activity.run(activityInput, (err: Error, status, env) => {
-        if (err) {
-          this.config.logger.fatal('ERROR:', {err});
-          this.config.logger.fatal(err.stack || '');
-          return cb(err, {status: 'failure'});
+      const workflowHandler = workflowType.getHandler();
+      const activities = workflowHandler.decider(input.initialEnv);
+      thisActivityDefObj = activities[input.name];
+      activityInput = env;
+    }
+
+    this.activity.run(activityInput, (err: Error, status, env) => {
+      if (err) {
+        this.config.logger.fatal('ERROR:', {err});
+        this.config.logger.fatal(err.stack || '');
+        return cb(err, {status: 'failure'});
+      }
+      let info: any = null;
+      let textStatus: string;
+      if (typeof status === 'string') {
+        textStatus = status;
+
+      } else {
+        textStatus = 'success';
+        info = status;
+      }
+
+      // If workflow task node defines its own output(), run env through it
+      if (isWorkflowTask && thisActivityDefObj && thisActivityDefObj.output) {
+        let outputValue = thisActivityDefObj.output(env).env;
+
+        if (!outputValue) {
+          this.config.logger.fatal('ERROR: Output returned no value in ' + input.workflow.name + ' for ' + input.name);
+          return cb(new Error('ERROR: Output returned no value in ' + input.workflow.name + ' for ' + input.name), {status: 'failure'});
         }
-        let info: any = null;
-        let textStatus: string;
-        if (typeof status === 'string') {
-          textStatus = status;
 
-        } else {
-          textStatus = 'success';
-          info = status;
-        }
+        this.config.logger.info(input.currentPath.join('->'), {
+          preOutput: env,
+          output: outputValue
+        });
+        env = outputValue;
+      }
 
-        // If workflow task node defines its own output(), run env through it
-        if (isWorkflowTask && thisActivityDefObj && thisActivityDefObj.output) {
-          let outputValue = thisActivityDefObj.output(env).env;
-
-          if (!outputValue) {
-            this.config.logger.fatal('ERROR: Output returned no value in ' + input.workflow.name + ' for ' + input.name);
-            return cb(new Error('ERROR: Output returned no value in ' + input.workflow.name + ' for ' + input.name), {status: 'failure'});
-          }
-
-          this.config.logger.info(input.currentPath.join('->'), {
-            preOutput: env,
-            output: outputValue
-          });
-          env = outputValue;
-        }
-
-        cb(null, {status: textStatus, info, env});
-      });
+      cb(null, {status: textStatus, info, env});
     });
   }
 

@@ -35,6 +35,7 @@ export interface WorkflowDetails {
   workflowType?: WorkflowType;
   workflowId?: string;
   runId?: string;
+  initialEnv?: object;
 }
 
 export interface ParentWorkflowDetails extends WorkflowDetails {
@@ -148,7 +149,6 @@ export default class TaskGraph extends BaseDecider {
     let isWorkflowTask = workflow ? true : false;
     let workflowType;
     var workflowDetails, parentWorkflowDetails;
-    var initialParentEnv;
 
     this.getInitialWorkflowEnv(task.getParentWorkflowInfo(),
       (err, initialParentEnv) => {
@@ -230,6 +230,7 @@ export default class TaskGraph extends BaseDecider {
     const graph = parameters.graph;
     const groupedEvents = decisionTask.getGroupedEvents();
     const decisionTaskEnv = decisionTask.getEnv();
+    let delayDecisions = false;
 
     let next = this.getNextNodes(graph, groupedEvents);
     let startCountByHandler = {};
@@ -238,26 +239,12 @@ export default class TaskGraph extends BaseDecider {
     // Pre validate all next node inputs against their schema if present
     if (workflowDetails) {
       for (let node of next.nodes) {
-        let inputEnv; // env filtered by input func if present
-
         const currentNodeTaskDefObj = workflowDetails.tasks[node.name];
+        let currPath = node.currentPath.join('->');
 
         if (currentNodeTaskDefObj) {
-          if (currentNodeTaskDefObj.input) {
-            // Clone in case user-provided input method mutates passed env
-            inputEnv = currentNodeTaskDefObj.input(_.clone(decisionTaskEnv));
-          }
-
-          let {error, value} = this.validateSchema(inputEnv || decisionTaskEnv, node);
-          node._inputEnv = value;
-
+          const error = this.validateNodeInput(currentNodeTaskDefObj, decisionTaskEnv, node, currPath);
           if (error) {
-
-            let currPath = node.currentPath.join('->');
-            this.logger.fatal(`Error in ${currPath} validating params: `, {
-              inputEnv,
-              error
-            });
             if (cb) {
               return cb(new Error(`Error in ${currPath} validating params: ` + error.message));
             } else {
@@ -303,16 +290,7 @@ export default class TaskGraph extends BaseDecider {
         if (!shouldThrottle) {
           startCountByHandler[node.handler] = startCountByHandler[node.handler] || 0;
           startCountByHandler[node.handler]++;
-
-          const handlerActType = this.activities.getModule(node.handler);
-          if (!handlerActType) {
-            throw new Error('missing activity type ' + node.handler);
-          }
-
-          let opts = this.buildOpts(node);
-          opts['maxRetry'] = node.maxRetry || handlerActType.getMaxRetry() || this.FTLConfig.getOpt('maxRetry');
-
-          decisionTask.scheduleTask(node.id, node, handlerActType, opts, inputEnv);
+          this.scheduleActivityTask(node, decisionTask, inputEnv, (workflowDetails || {})['initialEnv'] || {});
         }
       }
     }
@@ -320,6 +298,7 @@ export default class TaskGraph extends BaseDecider {
     const failedToReFail = decisionTask.rescheduleFailedEvents();
     const failedToReTimeOut = decisionTask.rescheduleTimedOutEvents();
     const failedToReschedule = failedToReFail.concat(failedToReTimeOut);
+    const retryableFailedSchedules = decisionTask.getRetryableFailedToScheduleEvents();
 
     if (failedToReschedule.length > 0) {
       this.logger.warn('failed to reschedule previously failed event(s)');
@@ -344,6 +323,55 @@ export default class TaskGraph extends BaseDecider {
         decisionTask.failWorkflow('failed to reschedule previously failed events', JSON.stringify(failedToReschedule).slice(0, 250));
       }
 
+    } else if (retryableFailedSchedules && workflowDetails) {
+      const {activity, workflow} = retryableFailedSchedules;
+      delayDecisions = true;
+
+      // Attempt to schedule activities for any that failed to be scheduled
+      activity.map((event) => {
+        const activityId = event.failedToSchedule.scheduleActivityTaskFailedEventAttributes.activityId;
+
+        const graphNode = graph.nodes[activityId];
+        const currentNodeTaskDefObj = workflowDetails.tasks[graphNode.name];
+
+        let currPath = graphNode.currentPath.join('->');
+        const error = this.validateNodeInput(currentNodeTaskDefObj, decisionTaskEnv, graphNode, currPath);
+
+        if (error) {
+          if (cb) {
+            return cb(new Error(`Error in ${currPath} validating params: ` + error.message));
+          } else {
+            throw new Error(`Error in ${currPath} validating params: ` + error.message);
+          }
+        }
+
+        let inputEnv = graphNode._inputEnv || decisionTaskEnv;
+        this.scheduleActivityTask(graphNode, decisionTask, inputEnv, (workflowDetails || {})['initialEnv'] || {});
+      });
+
+      // Attempt to schedule workflows for any that failed to be scheduled
+      workflow.map((event) => {
+        const workflowId = event.failedToSchedule.scheduleActivityTaskFailedEventAttributes.workflowId;
+
+        const graphNode = graph.nodes[workflowId];
+        const currentNodeTaskDefObj = workflowDetails.tasks[graphNode.name];
+
+        let currPath = graphNode.currentPath.join('->');
+        const error = this.validateNodeInput(currentNodeTaskDefObj, decisionTaskEnv, graphNode, currPath);
+
+        if (error) {
+          if (cb) {
+            return cb(new Error(`Error in ${currPath} validating params: ` + error.message));
+          } else {
+            throw new Error(`Error in ${currPath} validating params: ` + error.message);
+          }
+        }
+
+        let inputEnv = graphNode._inputEnv || decisionTaskEnv;
+        const maxRetry = graphNode.maxRetry || this.FTLConfig.getOpt('maxRetry');
+
+        decisionTask.startChildWorkflow(graphNode.id, graphNode, {maxRetry: maxRetry}, inputEnv);
+      });
     } else if (next.finished) {
       // TODO: better results
       let outputEnv = _.clone(decisionTaskEnv);
@@ -383,7 +411,54 @@ export default class TaskGraph extends BaseDecider {
       decisionTask.completeWorkflow({status: 'success'}, {}, outputEnv);
     }
 
-    if (cb) { return cb(); }
+    if (cb) {
+      if (delayDecisions) {
+
+        const options = {min: 1000, max: 10000};
+
+        const jitteredDelay = Math.min(options.max,
+            Math.round(Math.random() * (Math.pow(2, 2) * 1000 - options.min) + options.min));
+
+        this.logger.info(`Waiting ${jitteredDelay}ms to return decisions due to throttling`);
+
+        setTimeout(cb, jitteredDelay);
+      } else {
+        return cb();
+      }
+    }
+  }
+
+  private scheduleActivityTask(node: TaskGraphActivityNode, decisionTask: DecisionTask, inputEnv: any|Object, initialEnv?: any) {
+    const handlerActType = this.activities.getModule(node.handler);
+    if (!handlerActType) {
+      throw new Error('missing activity type ' + node.handler);
+    }
+
+    let opts = this.buildOpts(node);
+    opts['maxRetry'] = node.maxRetry || handlerActType.getMaxRetry() || this.FTLConfig.getOpt('maxRetry');
+
+    decisionTask.scheduleTask(node.id, node, handlerActType, opts, inputEnv, initialEnv);
+  }
+
+  private validateNodeInput(currentNodeTaskDefObj: any, decisionTaskEnv: Object, node, currPath) {
+    let inputEnv;
+
+    if (currentNodeTaskDefObj.input) {
+      // Clone in case user-provided input method mutates passed env
+      inputEnv = currentNodeTaskDefObj.input(_.clone(decisionTaskEnv));
+    }
+
+    let {error, value} = this.validateSchema(inputEnv || decisionTaskEnv, node);
+    node._inputEnv = value;
+
+    if (error) {
+      this.logger.fatal(`Error in ${currPath} validating params: `, {
+        inputEnv,
+        error
+      });
+    }
+
+    return error;
   }
 
   private validateSchema(inputEnv, node) {
