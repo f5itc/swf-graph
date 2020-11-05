@@ -1,0 +1,1 @@
+{"version":3,"file":"baz.js","sourceRoot":"","sources":["../../../test_integration/workflow/baz.ts"],"names":[],"mappings":";;AAAA,kBAAe;IACb,MAAM,YAAC,IAAI,EAAE,KAAK;QAChB,MAAM,CAAC;YACL,OAAO,EAAE,KAAK;YACd,UAAU,EAAE,EAAE;SACf,CAAC;IACJ,CAAC;IACD,SAAS,EAAE,CAAC,KAAK,CAAC;CACnB,CAAC"}

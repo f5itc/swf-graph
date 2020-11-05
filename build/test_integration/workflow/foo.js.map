@@ -1,0 +1,1 @@
+{"version":3,"file":"foo.js","sourceRoot":"","sources":["../../../test_integration/workflow/foo.ts"],"names":[],"mappings":";;AAAA,kBAAe;IACb,MAAM,YAAC,IAAI,EAAE,KAAK;QAChB,MAAM,CAAC;YACL,OAAO,EAAE,KAAK;YACd,UAAU,EAAE;gBACV,IAAI,EAAE,GAAG;aACV;SACF,CAAC;IACJ,CAAC;CACF,CAAC"}
