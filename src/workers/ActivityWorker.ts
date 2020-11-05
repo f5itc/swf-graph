@@ -87,13 +87,30 @@ export class ActivityWorker extends SWFActivityWorker implements LogWorkerMixin 
   }
 
   onFinishedTask(task: ActivityTask, execution: Activity, success: boolean, details: TaskStatus) {
+    this.logInfo('entered onFinishedTask', { task: task, execution: execution, details: details, success: success });
+
     let startTime = this.activityTimers[task.id];
+
+    this.logInfo('onFinishedTask startTime', { startTime: startTime });
+    this.logInfo('onFinishedTask taskInfo', { type: task.activityName(), id: execution.id });
+
     const taskInfo = {type: task.activityName(), id: execution.id};
+
     this.FTLConfig.metricReporter.timing('activity.timer', startTime);
     this.FTLConfig.metricReporter.timing(`activity.byHandler.${task.activityName()}.timer`, startTime);
     this.FTLConfig.metricReporter.decrement('activity.running');
     this.FTLConfig.metricReporter.decrement(`activity.byHandler.${task.activityName()}.running`);
+
+    this.logInfo('onFinishedTask activityTimers info before delete', {
+      taskId: task.id,
+      timers: this.activityTimers,
+      specificTimer: this.activityTimers[task.id]
+    });
+
     delete this.activityTimers[task.id];
+
+    this.logInfo('onFinishedTask deleted activity timer, about to respond');
+
     this.logInfo('responded to activity task', {
       task: taskInfo,
       success: success
@@ -116,9 +133,20 @@ export class ActivityWorker extends SWFActivityWorker implements LogWorkerMixin 
   }
 
   onTaskCompleted(task: ActivityTask, execution: Activity, details: TaskStatus) {
+    this.logInfo('entered onTaskCompleted', { task: task, execution: execution, details: details });
+    this.logInfo('onTaskCompleted taskInfo', { type: task.activityName(), id: execution.id });
+
     const taskInfo = {type: task.activityName(), id: execution.id};
     this.FTLConfig.metricReporter.increment('activity.completed');
     this.FTLConfig.metricReporter.increment(`activity.byHandler.${task.activityName()}.completed`);
+
+    this.logInfo('onTaskCompleted notifier sendInfo for taskFinished', {
+      task: taskInfo,
+      workflow: task.getWorkflowInfo(),
+      originWorkflow: task.getOriginWorkflow(),
+      details
+    });
+
     this.FTLConfig.notifier.sendInfo('taskFinished', {
       task: taskInfo,
       workflow: task.getWorkflowInfo(),
