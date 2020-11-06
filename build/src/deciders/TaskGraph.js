@@ -160,6 +160,8 @@ var TaskGraph = (function (_super) {
                         startCountSubWorkflows++;
                         var maxRetry = tgNode.maxRetry || this.FTLConfig.getOpt('maxRetry');
                         decisionTask.startChildWorkflow(tgNode.id, tgNode, { maxRetry: maxRetry }, inputEnv, (workflowDetails && workflowDetails.initialEnv) || null);
+                    } else {
+                      this.logger.warn('should throttle hit on decision');
                     }
                 }
                 else if (node.handler === 'recordMarker') {
@@ -175,6 +177,8 @@ var TaskGraph = (function (_super) {
                     startCountByHandler[node.handler] = startCountByHandler[node.handler] || 0;
                     startCountByHandler[node.handler]++;
                     this.scheduleActivityTask(node, decisionTask, inputEnv, (workflowDetails || {})['initialEnv'] || null);
+                } else {
+                    this.logger.warn('should throttle hit on activity');
                 }
             }
         }
@@ -203,6 +207,7 @@ var TaskGraph = (function (_super) {
             }
         }
         else if (retryableFailedSchedules && workflowDetails) {
+            this.logger.warn('attempting to reschedule activities that failed to be scheduled');
             var activity = retryableFailedSchedules.activity, workflow = retryableFailedSchedules.workflow;
             delayDecisions = true;
             // Attempt to schedule activities for any that failed to be scheduled
@@ -244,6 +249,7 @@ var TaskGraph = (function (_super) {
             });
         }
         else if (next.finished) {
+          this.logger.info('next.finished reached');
             // TODO: better results
             var outputEnv = _.clone(decisionTaskEnv);
             // If there is an output func defined on the parent workflow use it to filter env
@@ -349,6 +355,8 @@ var TaskGraph = (function (_super) {
             return false;
         }
         var maxConcurrent = handlerActType.getMaxConcurrent();
+
+      this.logger.info('throttle maxConcurrent:  ' + maxConcurrent);
         if (maxConcurrent == null) {
             return false;
         }
@@ -356,6 +364,8 @@ var TaskGraph = (function (_super) {
             return false;
         }
         var startingCount = startCountByHandler[node.handler] || 0;
+
+      this.logger.info('throttle startingCount: ' + startingCount);
         var curRunningOfType = 0;
         for (var nodeId in groupedEvents.activity) {
             var curNode = this.getNodeDetails(graph, groupedEvents, false, nodeId);
@@ -364,12 +374,14 @@ var TaskGraph = (function (_super) {
             }
         }
         if ((curRunningOfType + startingCount) >= maxConcurrent) {
+      this.logger.warn('throttle hit true: ' + curRunningOfType + ' ' + startingCount);
             return true;
         }
         return false;
     };
     TaskGraph.prototype.throttleWorkflows = function (node, graph, groupedEvents, startCountSubWorkflows, maxRunningWorkflow) {
         maxRunningWorkflow = maxRunningWorkflow || this.maxRunningWorkflow;
+      this.logger.info('throttleWorkflows maxRunningWorkflow ' + maxRunningWorkflow);
         var curRunningWorkflows = 0;
         if (!groupedEvents.workflow) {
             return false;
@@ -381,6 +393,7 @@ var TaskGraph = (function (_super) {
             }
         }
         if ((curRunningWorkflows + startCountSubWorkflows) >= maxRunningWorkflow) {
+          this.logger.warn('throttleWorkflows hit true: ' + curRunningWorkflows + ' ' + startCountSubWorkflows);
             return true;
         }
         return false;

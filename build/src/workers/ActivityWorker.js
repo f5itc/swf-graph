@@ -85,29 +85,17 @@ var ActivityWorker = (function (_super) {
         });
     };
     ActivityWorker.prototype.onFinishedTask = function (task, execution, success, details) {
-        this.logInfo('entered onFinishedTask', { task: task, execution: execution, details: details, success: success });
-
+      this.logInfo('entered onFinishedTask');
         var startTime = this.activityTimers[task.id];
-
-        this.logInfo('onFinishedTask startTime', { startTime: startTime });
-        this.logInfo('onFinishedTask taskInfo', { type: task.activityName(), id: execution.id });
-
         var taskInfo = { type: task.activityName(), id: execution.id };
+
+      this.logInfo('onFinishedTask taskInfo', { startTime, taskInfo });
+
         this.FTLConfig.metricReporter.timing('activity.timer', startTime);
         this.FTLConfig.metricReporter.timing("activity.byHandler." + task.activityName() + ".timer", startTime);
         this.FTLConfig.metricReporter.decrement('activity.running');
         this.FTLConfig.metricReporter.decrement("activity.byHandler." + task.activityName() + ".running");
-
-        this.logInfo('onFinishedTask activityTimers info before delete', {
-          taskId: task.id,
-          timers: this.activityTimers,
-          specificTimer: this.activityTimers[task.id]
-        });
-
         delete this.activityTimers[task.id];
-
-        this.logInfo('onFinishedTask deleted activity timer, about to respond');
-
         this.logInfo('responded to activity task', {
             task: taskInfo,
             success: success
@@ -127,19 +115,9 @@ var ActivityWorker = (function (_super) {
         this.logInfo('polling for tasks...');
     };
     ActivityWorker.prototype.onTaskCompleted = function (task, execution, details) {
-        this.logInfo('entered onTaskCompleted', { task: task, execution: execution, details: details });
-        this.logInfo('onTaskCompleted taskInfo', { type: task.activityName(), id: execution.id });
-
         var taskInfo = { type: task.activityName(), id: execution.id };
         this.FTLConfig.metricReporter.increment('activity.completed');
         this.FTLConfig.metricReporter.increment("activity.byHandler." + task.activityName() + ".completed");
-
-        this.logInfo('onTaskCompleted notifier sendInfo for taskFinished', {
-          task: taskInfo,
-          workflow: task.getWorkflowInfo(),
-          originWorkflow: task.getOriginWorkflow(),
-          details
-        });
 
         this.FTLConfig.notifier.sendInfo('taskFinished', {
             task: taskInfo,
@@ -147,6 +125,14 @@ var ActivityWorker = (function (_super) {
             originWorkflow: task.getOriginWorkflow(),
             details: details
         });
+
+        this.logInfo('emitting taskFinished from onTaskCompleted', {
+            task: taskInfo,
+            workflow: task.getWorkflowInfo(),
+            originWorkflow: task.getOriginWorkflow(),
+            details: details
+        });
+
         this.logInfo('task completed', this.buildTaskMeta(task, { details: details }));
     };
     ActivityWorker.prototype.onTaskFailed = function (task, execution, err, details) {
